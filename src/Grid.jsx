@@ -5,35 +5,67 @@ import {
   useSensor,
   useSensors,
   DragOverlay,
+  pointerWithin,
+  useDndContext
 } from "@dnd-kit/core";
 
 import Panel from "./Panel";
 import PanelClone from "./PanelClone";
+
+import { useDroppable } from "@dnd-kit/core";
+
+function CellDroppable({ r, c, dark }) {
+  const { active } = useDndContext();
+
+  const isPanelDrag = active?.data?.current?.role === "panel";
+
+  const { setNodeRef, isOver } = useDroppable({
+    id: `cell-${r}-${c}`,
+    data: { role: "grid-cell", row: r, col: c }
+  });
+
+  const highlight = isPanelDrag && isOver;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        background: highlight
+          ? "rgba(50,150,255,0.45)"
+          : dark
+            ? "#22272B"
+            : "#2C333A",
+        border: "1px solid #3F444A",
+        transition: "background 80ms"
+      }}
+    />
+  );
+}
 
 export default function Grid({
   rows,
   cols,
   panels,
   setPanels,
-  toggleToolbar,
+  tasks,
+  setTasks,
+  toggleToolbar
 }) {
   const gridRef = useRef(null);
   const [activeId, setActiveId] = useState(null);
 
-  // Track sizes (FR units)
   const [colSizes, setColSizes] = useState(() => Array(cols).fill(1));
   const [rowSizes, setRowSizes] = useState(() => Array(rows).fill(1));
 
-  // Sync with rows/cols changes
   useEffect(() => setColSizes(Array(cols).fill(1)), [cols]);
   useEffect(() => setRowSizes(Array(rows).fill(1)), [rows]);
 
-  // Expose sizes to Panel
+  // expose FR track sizes to panels
   useEffect(() => {
     if (gridRef.current) {
       gridRef.current.dataset.sizes = JSON.stringify({
         colSizes,
-        rowSizes,
+        rowSizes
       });
     }
   }, [colSizes, rowSizes]);
@@ -41,21 +73,18 @@ export default function Grid({
   const colTemplate = colSizes.map((s) => `${s}fr`).join(" ");
   const rowTemplate = rowSizes.map((s) => `${s}fr`).join(" ");
 
-  // DND sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   );
 
   const getPanel = (id) => panels.find((p) => p.id === id);
 
-  // Convert pointer → grid cell
+  // pointer → grid cell
   const getCellFromPointer = (clientX, clientY) => {
     const rect = gridRef.current.getBoundingClientRect();
-
     const relX = (clientX - rect.left) / rect.width;
     const relY = (clientY - rect.top) / rect.height;
 
-    // columns
     const totalCols = colSizes.reduce((a, b) => a + b, 0);
     let acc = 0;
     let col = 0;
@@ -67,7 +96,6 @@ export default function Grid({
       }
     }
 
-    // rows
     const totalRows = rowSizes.reduce((a, b) => a + b, 0);
     acc = 0;
     let row = 0;
@@ -82,68 +110,139 @@ export default function Grid({
     return { col, row };
   };
 
-  // ⭐ Actual cursor tracking fix ⭐
-  const getPointerXY = (event) => {
-    const start = event.active.data.current?.pointerStart;
-    if (!start) return null;
-    return {
-      x: start.x + event.delta.x,
-      y: start.y + event.delta.y,
-    };
-  };
+  // ✅ cursor tracking: always pointerStart + delta
+const getPointerXY = (event) => {
+  const data = event.active.data.current;
+  if (!data || !data.pointerStart) return null;
 
-  // Hover highlight
+  return {
+    x: data.pointerStart.x + event.delta.x,
+    y: data.pointerStart.y + event.delta.y
+  };
+};
+
+
   const [hoverCell, setHoverCell] = useState(null);
 
-  // ---- DRAG START ----
-  const handleDragStart = (event) => {
-    setActiveId(event.active.id);
+  // ----------------------------------------------------------
+  // DRAG START
+  // ----------------------------------------------------------
+const handleDragStart = (event) => {
+  setActiveId(event.active.id);
 
-    const e = event.activatorEvent;
-    if (e?.clientX != null && e?.clientY != null) {
-      event.active.data.current = {
-        pointerStart: { x: e.clientX, y: e.clientY }
-      };
-    }
+  const e = event.activatorEvent;
+  const clientX = e?.clientX ?? e?.touches?.[0]?.clientX;
+  const clientY = e?.clientY ?? e?.touches?.[0]?.clientY;
+
+  // Make sure data.current exists:
+  if (!event.active.data.current) {
+    event.active.data.current = { ...event.active.data };
+  }
+
+  // DO NOT SPREAD event.active.data.current (it resets keys)
+  event.active.data.current.pointerStart = {
+    x: clientX,
+    y: clientY
   };
 
+  console.log("dragStart data:", event.active.data.current);
+};
 
-  // ---- DRAG MOVE (always highlight under cursor) ----
+
+  // ----------------------------------------------------------
+  // DRAG MOVE (panel-only highlight, based on mouse position)
+  // ----------------------------------------------------------
   const handleDragMove = (event) => {
-    const pointer = getPointerXY(event);
-    if (!pointer || !gridRef.current) return;
-    console.log(pointer);
-    const { col, row } = getCellFromPointer(pointer.x, pointer.y);
-    console.log(col, row);
-    setHoverCell({ col, row });
-  };
+    console.log(event);
+    const data = event.active.data.current;
 
-  console.log(hoverCell);
+    console.log("DRAGGED:", data);
+    console.log("OVER:", event.over);
 
-  // ---- DRAG END (drop at cursor) ----
-  const handleDragEnd = (event) => {
-    setActiveId(null);
+
+    // If it's not a panel, don't show a hover cell
+    if (data?.type !== "panel") {
+      setHoverCell(null);
+      return;
+    }
 
     const pointer = getPointerXY(event);
     if (!pointer) return;
 
-    const panel = getPanel(event.active.id);
-    if (!panel) return;
-
     const { col, row } = getCellFromPointer(pointer.x, pointer.y);
-
-    setPanels((list) =>
-      list.map((p) =>
-        p.id === panel.id
-          ? { ...p, col, row, width: 1, height: 1 }
-          : p
-      )
-    );
-
-    setHoverCell(null);
+    setHoverCell({ col, row });
   };
 
-  // ---- Column resize ----
+  // ----------------------------------------------------------
+  // DRAG END
+  // ----------------------------------------------------------
+  const handleDragEnd = (event) => {
+    setActiveId(null);
+    setHoverCell(null);
+
+    const active = event.active;
+    const over = event.over;
+    console.log(over);
+    if (!over) return;
+    console.log(event);
+    const data = active.data.current;
+    const isTask = data?.role === "task";
+
+    // -----------------------------
+    // TASK DRAG — TWO WAY FLOW
+    // -----------------------------
+    if (isTask) {
+      const activeId = active.id;
+      const fromPanelId = data.fromPanelId;
+      const toPanelId = over.id;
+
+      if (!toPanelId || !fromPanelId || over.data.current.role == "grid-cell") return;
+
+      setPanels((list) =>
+        list.map((p) => {
+          if (p.id === fromPanelId) {
+            return {
+              ...p,
+              tasks: p.tasks.filter((t) => t !== activeId)
+            };
+          }
+          if (p.id === toPanelId) {
+            return {
+              ...p,
+              tasks: [...p.tasks, activeId]
+            };
+          }
+          return p;
+        })
+      );
+
+      return;
+    }
+    console.log(data);
+    if (data?.role === "panel") {
+      console.log("Hit");
+      const pointer = getPointerXY(event);
+      console.log(pointer);
+      if (!pointer) return;
+
+      const { col, row } = getCellFromPointer(pointer.x, pointer.y);
+      console.log("📌 PANEL DROP TARGET:", { row, col });
+
+      setPanels((list) =>
+        list.map((p) =>
+          p.id === active.id
+            ? { ...p, col, row, width: 1, height: 1 }
+            : p
+        )
+      );
+
+      return;
+    }
+
+
+  };
+
+  // resizing
   const resizeColumn = (i, movement) => {
     setColSizes((sizes) => {
       const next = i + 1;
@@ -160,7 +259,6 @@ export default function Grid({
     });
   };
 
-  // ---- Row resize ----
   const resizeRow = (i, movement) => {
     setRowSizes((sizes) => {
       const next = i + 1;
@@ -177,10 +275,13 @@ export default function Grid({
     });
   };
 
-  // ---- RENDER ----
+  // ----------------------------------------------------------
+  // RENDER
+  // ----------------------------------------------------------
   return (
     <DndContext
       sensors={sensors}
+      collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
@@ -190,10 +291,9 @@ export default function Grid({
           position: "absolute",
           inset: 0,
           background: "#1D2125",
-          overflow: "hidden",
+          overflow: "hidden"
         }}
       >
-        {/* Wrench */}
         <div
           onClick={toggleToolbar}
           style={{
@@ -210,13 +310,12 @@ export default function Grid({
             justifyContent: "center",
             color: "white",
             cursor: "pointer",
-            zIndex: 2,
+            zIndex: 2
           }}
         >
           🔧
         </div>
 
-        {/* MAIN GRID */}
         <div
           ref={gridRef}
           style={{
@@ -224,7 +323,7 @@ export default function Grid({
             inset: 0,
             display: "grid",
             gridTemplateColumns: colTemplate,
-            gridTemplateRows: rowTemplate,
+            gridTemplateRows: rowTemplate
           }}
         >
           {hoverCell && (
@@ -236,25 +335,21 @@ export default function Grid({
                 gridRowEnd: hoverCell.row + 2,
                 background: "rgba(50,150,255,0.45)",
                 pointerEvents: "none",
-                zIndex: 5,
+                zIndex: 5
               }}
             />
           )}
-          {/* Checkerboard */}
+
+          {/* checkerboard droppable cells */}
           {[...Array(rows)].map((_, r) =>
             [...Array(cols)].map((_, c) => {
               const dark = (r + c) % 2 === 0;
-
-              let bg = dark ? "#22272B" : "#2C333A";
-
               return (
-                <div
+                <CellDroppable
                   key={`${r}-${c}`}
-                  style={{
-                    background: bg,
-                    border: "1px solid #3F444A",
-                    transition: "background 80ms",
-                  }}
+                  r={r}
+                  c={c}
+                  dark={dark}
                 />
               );
             })
@@ -295,7 +390,7 @@ export default function Grid({
                   marginLeft: -3,
                   cursor: "col-resize",
                   background: "rgba(255,255,255,0.15)",
-                  zIndex: 50,
+                  zIndex: 50
                 }}
               />
             ) : null
@@ -336,29 +431,47 @@ export default function Grid({
                   marginTop: -3,
                   cursor: "row-resize",
                   background: "rgba(255,255,255,0.15)",
-                  zIndex: 50,
+                  zIndex: 50
                 }}
               />
             ) : null
           )}
 
-          {/* Panels */}
           {panels.map((p) => (
             <Panel
               key={p.id}
               panel={p}
               setPanels={setPanels}
+              tasks={tasks}
+              setTasks={setTasks}
               gridRef={gridRef}
               cols={cols}
               rows={rows}
               activeId={activeId}
+              hidden={p.id === activeId}   // ⭐ ADD THIS
             />
           ))}
+
         </div>
       </div>
 
-      <DragOverlay>
-        {activeId && <PanelClone panel={getPanel(activeId)} />}
+      <DragOverlay zIndex={100000}>
+        {activeId && getPanel(activeId) ? (
+          <PanelClone panel={getPanel(activeId)} />
+        ) : null}
+
+        {activeId && !getPanel(activeId) ? (
+          <div
+            style={{
+              padding: 8,
+              background: "#334",
+              color: "white",
+              borderRadius: 6
+            }}
+          >
+            {activeId}
+          </div>
+        ) : null}
       </DragOverlay>
     </DndContext>
   );

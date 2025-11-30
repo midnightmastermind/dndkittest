@@ -10,6 +10,12 @@ const App = () => {
   const [panels, setPanels] = useState([]);
   const [showToolbar, setShowToolbar] = useState(false);
 
+  const [tasks, setTasks] = useState([
+    { id: "task-1", label: "Item 1" },
+    { id: "task-2", label: "Item 2" },
+    { id: "task-3", label: "Item 3" }
+  ]);
+
   const findNextSpot = () => {
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -25,23 +31,39 @@ const App = () => {
     const spot = findNextSpot();
     if (!spot) return alert("Grid full");
 
-    setPanels((prev) => [
+    // Create UNIQUE task IDs for THIS panel only
+    const uniqueTasks = [
+      crypto.randomUUID(),
+      crypto.randomUUID(),
+      crypto.randomUUID()
+    ];
+
+    // Register these tasks in the GLOBAL task registry
+    setTasks(prev => [
+      ...prev,
+      { id: uniqueTasks[0], label: "Item A" },
+      { id: uniqueTasks[1], label: "Item B" },
+      { id: uniqueTasks[2], label: "Item C" }
+    ]);
+
+    // Panel gets its own isolated task list
+    setPanels(prev => [
       ...prev,
       {
         id: crypto.randomUUID(),
+        type: "taskbox",
+        tasks: uniqueTasks,   // 🔥 PRIVATE TASKS
         row: spot.row,
         col: spot.col,
         width: 1,
-        height: 1,
-        x: spot.col * 140,
-        y: spot.row * 140,
-      },
+        height: 1
+      }
     ]);
   };
 
+
   return (
     <div style={{ background: "#1D2125", height: "100vh", overflow: "hidden", position: "relative" }}>
-      {/* TOOLBAR (slide-down) */}
       <div
         onMouseLeave={() => setShowToolbar(false)}
         style={{
@@ -89,6 +111,8 @@ const App = () => {
         cols={cols}
         panels={panels}
         setPanels={setPanels}
+        tasks={tasks}
+        setTasks={setTasks}
         snapMode={snapMode}
         toggleToolbar={() => setShowToolbar(true)}
       />

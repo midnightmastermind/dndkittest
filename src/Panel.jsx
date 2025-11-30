@@ -3,24 +3,43 @@ import Button from "@atlaskit/button";
 import ResizeHandle from "./ResizeHandle";
 import { token } from "@atlaskit/tokens";
 import { useDraggable } from "@dnd-kit/core";
+import TaskBox from "./TaskBox";
+import Schedule from "./Schedule";
 
 export default function Panel({
   panel,
   setPanels,
+  tasks,
+  setTasks,
   gridRef,
   cols,
   rows,
-  activeId
+  activeId,
+  hidden
 }) {
   const panelRef = useRef(null);
   const [isResizing, setIsResizing] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const prev = useRef(null);
 
+  // ⭐⭐⭐ STABLE DND KIT DATA (fixes data.current being wiped)
+  const stableData = React.useMemo(
+    () => ({
+      role: "panel",
+      panelId: panel.id,
+      fromRow: panel.row,
+      fromCol: panel.col,
+      width: panel.width,
+      height: panel.height,
+    }),
+    [] // ← MUST stay empty so the object NEVER re-renders
+  );
+
   // ---- DRAG ENABLED UNLESS RESIZING ----
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: panel.id,
     disabled: isResizing,
+    data: stableData,
   });
 
   const dragListeners = isResizing ? {} : listeners;
@@ -56,7 +75,6 @@ export default function Panel({
   const colFromPx = (px) => {
     const { colSizes } = getTrackInfo();
     const rect = gridRef.current.getBoundingClientRect();
-
     const rel = (px - rect.left) / rect.width;
     const total = colSizes.reduce((a, b) => a + b, 0);
 
@@ -72,7 +90,6 @@ export default function Panel({
   const rowFromPx = (py) => {
     const { rowSizes } = getTrackInfo();
     const rect = gridRef.current.getBoundingClientRect();
-
     const rel = (py - rect.top) / rect.height;
     const total = rowSizes.reduce((a, b) => a + b, 0);
 
@@ -91,7 +108,7 @@ export default function Panel({
     setIsResizing(true);
   };
 
-  // ---- RESIZE EFFECT (snap to FR tracks) ----
+  // ---- RESIZE EFFECT ----
   useEffect(() => {
     if (!isResizing) return;
 
@@ -129,12 +146,11 @@ export default function Panel({
                     ${panel.row + panel.height + 1} / 
                     ${panel.col + panel.width + 1}`;
 
-  // ---- RENDER ----
   return (
     <div
       ref={(el) => {
         panelRef.current = el;
-        setNodeRef(el);
+        setNodeRef(el); // ⭐ PANEL is draggable
       }}
       {...attributes}
       style={{
@@ -144,51 +160,104 @@ export default function Panel({
         border: "1px solid #AAA",
         overflow: "hidden",
         userSelect: "none",
-        opacity: activeId === panel.id ? 0 : 1,
+
+        opacity: hidden ? 0 : 1,
+        visibility: hidden ? "hidden" : "visible",
+
+        // ⭐ When dragging, panel ignores pointer (overlay controls movement)
+        pointerEvents: activeId === panel.id ? "none" : "auto",
+        zIndex: fullscreen ? 3 : 1,
         position: "relative",
       }}
     >
-      {/* HEADER */}
-      <div
-        style={{
-          background: "#DDE2EB",
-          padding: "6px 12px",
-          borderTopLeftRadius: 8,
-          borderTopRightRadius: 8,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontWeight: 600,
-          position: "relative",
-          zIndex: (fullscreen ? 3 : 1)
-        }}
-      >
-        <div style={{ pointerEvents: "none" }}>☰ Panel</div>
+      <div style={{ display: activeId === panel.id ? "none" : "block" }}>
 
-        <Button spacing="compact" onClick={toggleFullscreen}>
-          {fullscreen ? "Restore" : "Fullscreen"}
-        </Button>
-
-        {/* Drag handle */}
+        {/* HEADER */}
         <div
-          {...dragListeners}
           style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 50,
-            cursor: isResizing ? "default" : "grab",
+            background: "#DDE2EB",
+            padding: "6px 12px",
+            borderTopLeftRadius: 8,
+            borderTopRightRadius: 8,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            fontWeight: 600,
+            position: "relative",
+            zIndex: fullscreen ? 3 : 1,
           }}
-        />
-      </div>
+        >
+          <div style={{ pointerEvents: "none" }}>☰ Panel</div>
 
-      <div style={{ padding: 12, color: "white" }}>
-        Panel content
-      </div>
+          <select
+            value={panel.type}
+            onChange={(e) => {
+              const type = e.target.value;
+              setPanels((list) =>
+                list.map((p) =>
+                  p.id === panel.id ? { ...p, type } : p
+                )
+              );
+            }}
+            style={{ marginLeft: 12, zIndex: 5 }}
+          >
+            <option value="taskbox">TaskBox</option>
+            <option value="schedule">Schedule</option>
+          </select>
 
-      {/* Resize handle */}
-      <ResizeHandle onMouseDown={beginResize} />
+          <Button spacing="compact" onClick={toggleFullscreen}>
+            {fullscreen ? "Restore" : "Fullscreen"}
+          </Button>
+
+          {/* DRAG HANDLE */}
+          <div
+            {...dragListeners}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 50,
+              background: "rgba(255,0,0,0.3)",
+              cursor: isResizing ? "default" : "grab",
+              zIndex: 10,
+              touchAction: "none",
+            }}
+          />
+        </div>
+
+        {/* CONTENT */}
+        <div
+          style={{
+            padding: 12,
+            color: "white",
+            height: "100%",
+            overflow: "hidden",
+            pointerEvents: activeId === panel.id ? "none" : "auto",
+          }}
+        >
+          {panel.type === "taskbox" && (
+            <TaskBox
+              panel={panel}
+              tasks={tasks}
+              setTasks={setTasks}
+              fromPanelId={panel.id}
+              disabled={fullscreen}
+            />
+          )}
+
+          {panel.type === "schedule" && (
+            <Schedule
+              panel={panel}
+              tasks={tasks}
+              setTasks={setTasks}
+              fromPanelId={panel.id}
+            />
+          )}
+        </div>
+
+        <ResizeHandle onMouseDown={beginResize} />
+      </div>
     </div>
   );
 }
