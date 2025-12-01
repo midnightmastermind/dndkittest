@@ -23,7 +23,9 @@ function CellDroppable({ r, c, dark }) {
     id: `cell-${r}-${c}`,
     data: { role: "grid-cell", row: r, col: c }
   });
-
+  useEffect(() => {
+  if (isOver) console.log("🔥 OVER CELL:", r, c);
+}, [isOver]);
   const highlight = isPanelDrag && isOver;
 
   return (
@@ -111,15 +113,15 @@ export default function Grid({
   };
 
   // ✅ cursor tracking: always pointerStart + delta
-const getPointerXY = (event) => {
-  const data = event.active.data.current;
-  if (!data || !data.pointerStart) return null;
+  const getPointerXY = (event) => {
+    const data = event.active.data.current;
+    if (!data || !data.pointerStart) return null;
 
-  return {
-    x: data.pointerStart.x + event.delta.x,
-    y: data.pointerStart.y + event.delta.y
+    return {
+      x: data.pointerStart.x + event.delta.x,
+      y: data.pointerStart.y + event.delta.y
+    };
   };
-};
 
 
   const [hoverCell, setHoverCell] = useState(null);
@@ -127,26 +129,26 @@ const getPointerXY = (event) => {
   // ----------------------------------------------------------
   // DRAG START
   // ----------------------------------------------------------
-const handleDragStart = (event) => {
-  setActiveId(event.active.id);
+  const handleDragStart = (event) => {
+    setActiveId(event.active.id);
 
-  const e = event.activatorEvent;
-  const clientX = e?.clientX ?? e?.touches?.[0]?.clientX;
-  const clientY = e?.clientY ?? e?.touches?.[0]?.clientY;
+    const e = event.activatorEvent;
+    const clientX = e?.clientX ?? e?.touches?.[0]?.clientX;
+    const clientY = e?.clientY ?? e?.touches?.[0]?.clientY;
 
-  // Make sure data.current exists:
-  if (!event.active.data.current) {
-    event.active.data.current = { ...event.active.data };
-  }
+    // Make sure data.current exists:
+    if (!event.active.data.current) {
+      event.active.data.current = { ...event.active.data };
+    }
 
-  // DO NOT SPREAD event.active.data.current (it resets keys)
-  event.active.data.current.pointerStart = {
-    x: clientX,
-    y: clientY
+    // DO NOT SPREAD event.active.data.current (it resets keys)
+    event.active.data.current.pointerStart = {
+      x: clientX,
+      y: clientY
+    };
+
+    console.log("dragStart data:", event.active.data.current);
   };
-
-  console.log("dragStart data:", event.active.data.current);
-};
 
 
   // ----------------------------------------------------------
@@ -448,9 +450,9 @@ const handleDragStart = (event) => {
               cols={cols}
               rows={rows}
               activeId={activeId}
-              hidden={p.id === activeId}   // ⭐ ADD THIS
             />
           ))}
+
 
         </div>
       </div>

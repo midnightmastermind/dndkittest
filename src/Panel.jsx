@@ -22,7 +22,7 @@ export default function Panel({
   const [fullscreen, setFullscreen] = useState(false);
   const prev = useRef(null);
 
-  // ⭐⭐⭐ STABLE DND KIT DATA (fixes data.current being wiped)
+  // ⭐⭐⭐ DND-Kit stable data (never updates → never gets wiped)
   const stableData = React.useMemo(
     () => ({
       role: "panel",
@@ -32,7 +32,7 @@ export default function Panel({
       width: panel.width,
       height: panel.height,
     }),
-    [] // ← MUST stay empty so the object NEVER re-renders
+    [] // NEVER re-run
   );
 
   // ---- DRAG ENABLED UNLESS RESIZING ----
@@ -43,6 +43,9 @@ export default function Panel({
   });
 
   const dragListeners = isResizing ? {} : listeners;
+
+  // ⭐ SHRINK WHILE DRAGGING (panel stops blocking grid)
+  const collapsed = activeId === panel.id;
 
   // ---- FULLSCREEN ----
   const toggleFullscreen = () => {
@@ -142,35 +145,40 @@ export default function Panel({
     };
   }, [isResizing, panel, setPanels, cols, rows]);
 
-  const gridArea = `${panel.row + 1} / ${panel.col + 1} / 
-                    ${panel.row + panel.height + 1} / 
-                    ${panel.col + panel.width + 1}`;
+  // ⭐ Collapsed gridArea when dragging
+  const gridArea = collapsed
+    ? `${panel.row + 1} / ${panel.col + 1} /
+       ${panel.row + 2} / ${panel.col + 2}`
+    : `${panel.row + 1} / ${panel.col + 1} /
+       ${panel.row + panel.height + 1} /
+       ${panel.col + panel.width + 1}`;
 
   return (
     <div
       ref={(el) => {
         panelRef.current = el;
-        setNodeRef(el); // ⭐ PANEL is draggable
+        setNodeRef(el);
       }}
       {...attributes}
       style={{
         gridArea,
+
         background: token("elevation.surface", "rgba(17,17,17,0.8)"),
         borderRadius: 8,
         border: "1px solid #AAA",
         overflow: "hidden",
         userSelect: "none",
 
-        opacity: hidden ? 0 : 1,
-        visibility: hidden ? "hidden" : "visible",
+        // ⭐ collapse + hide original panel while dragging
+        opacity: collapsed ? 0 : 1,
+        visibility: collapsed ? "hidden" : "visible",
+        pointerEvents: collapsed ? "none" : "auto",
 
-        // ⭐ When dragging, panel ignores pointer (overlay controls movement)
-        pointerEvents: activeId === panel.id ? "none" : "auto",
         zIndex: fullscreen ? 3 : 1,
         position: "relative",
       }}
     >
-      <div style={{ display: activeId === panel.id ? "none" : "block" }}>
+      <div style={{ display: collapsed ? "none" : "block" }}>
 
         {/* HEADER */}
         <div
@@ -233,7 +241,6 @@ export default function Panel({
             color: "white",
             height: "100%",
             overflow: "hidden",
-            pointerEvents: activeId === panel.id ? "none" : "auto",
           }}
         >
           {panel.type === "taskbox" && (

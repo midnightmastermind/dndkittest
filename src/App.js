@@ -4,9 +4,8 @@ import Textfield from "@atlaskit/textfield";
 import Grid from "./Grid";
 
 const App = () => {
-  const [rows, setRows] = useState(2);
-  const [cols, setCols] = useState(3);
-  const [snapMode, setSnapMode] = useState(true);
+  const [rows, setRows] = useState(6);
+  const [cols, setCols] = useState(6);
   const [panels, setPanels] = useState([]);
   const [showToolbar, setShowToolbar] = useState(false);
 
@@ -101,9 +100,6 @@ const App = () => {
           Add Panel
         </Button>
 
-        <Button appearance="warning" onClick={() => setSnapMode((v) => !v)}>
-          {snapMode ? "Switch to Free Drag" : "Switch to Snap Mode"}
-        </Button>
       </div>
 
       <Grid
@@ -113,7 +109,6 @@ const App = () => {
         setPanels={setPanels}
         tasks={tasks}
         setTasks={setTasks}
-        snapMode={snapMode}
         toggleToolbar={() => setShowToolbar(true)}
       />
     </div>
