@@ -32,7 +32,7 @@ export default function Panel({
       width: panel.width,
       height: panel.height,
     }),
-    [] // NEVER re-run
+    [] // MUST stay empty
   );
 
   // ---- DRAG ENABLED UNLESS RESIZING ----
@@ -68,13 +68,14 @@ export default function Panel({
     setFullscreen((f) => !f);
   };
 
-  // ---- Helper: parse FR track sizes ----
+  // ------------------------------------------------------
+  // GRID TRACK UTILITIES
+  // ------------------------------------------------------
   const getTrackInfo = () => {
     const data = gridRef.current?.dataset.sizes;
     return data ? JSON.parse(data) : null;
   };
 
-  // ---- Convert px → column index ----
   const colFromPx = (px) => {
     const { colSizes } = getTrackInfo();
     const rect = gridRef.current.getBoundingClientRect();
@@ -89,7 +90,6 @@ export default function Panel({
     return colSizes.length - 1;
   };
 
-  // ---- Convert px → row index ----
   const rowFromPx = (py) => {
     const { rowSizes } = getTrackInfo();
     const rect = gridRef.current.getBoundingClientRect();
@@ -104,20 +104,25 @@ export default function Panel({
     return rowSizes.length - 1;
   };
 
-  // ---- RESIZE START ----
-  const beginResize = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // ------------------------------------------------------
+  // MOBILE + MOUSE RESIZE HANDLER
+  // ------------------------------------------------------
+  const beginResize = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
     setIsResizing(true);
-  };
 
-  // ---- RESIZE EFFECT ----
-  useEffect(() => {
-    if (!isResizing) return;
+    let startX = event.clientX ?? event.touches?.[0]?.clientX;
+    let startY = event.clientY ?? event.touches?.[0]?.clientY;
 
-    const move = (e) => {
-      const newCol = colFromPx(e.clientX);
-      const newRow = rowFromPx(e.clientY);
+    const move = (ev) => {
+      const clientX = ev.clientX ?? ev.touches?.[0]?.clientX;
+      const clientY = ev.clientY ?? ev.touches?.[0]?.clientY;
+
+      if (clientX == null || clientY == null) return;
+
+      const newCol = colFromPx(clientX);
+      const newRow = rowFromPx(clientY);
 
       const width = Math.max(1, newCol - panel.col + 1);
       const height = Math.max(1, newRow - panel.row + 1);
@@ -132,18 +137,30 @@ export default function Panel({
             : p
         )
       );
+
+      startX = clientX;
+      startY = clientY;
     };
 
-    const stop = () => setIsResizing(false);
+    const stop = () => {
+      setIsResizing(false);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
 
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", stop);
+      window.removeEventListener("touchcancel", stop);
+    };
+
+    // Mouse
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", stop);
 
-    return () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", stop);
-    };
-  }, [isResizing, panel, setPanels, cols, rows]);
+    // Touch
+    window.addEventListener("touchmove", move, { passive: false });
+    window.addEventListener("touchend", stop);
+    window.addEventListener("touchcancel", stop);
+  };
 
   // ⭐ Collapsed gridArea when dragging
   const gridArea = collapsed
@@ -153,6 +170,9 @@ export default function Panel({
        ${panel.row + panel.height + 1} /
        ${panel.col + panel.width + 1}`;
 
+  // ------------------------------------------------------
+  // RENDER
+  // ------------------------------------------------------
   return (
     <div
       ref={(el) => {
@@ -263,7 +283,11 @@ export default function Panel({
           )}
         </div>
 
-        <ResizeHandle onMouseDown={beginResize} />
+        {/* MOBILE-FRIENDLY RESIZE HANDLE */}
+        <ResizeHandle
+          onMouseDown={beginResize}
+          onTouchStart={beginResize}
+        />
       </div>
     </div>
   );

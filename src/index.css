@@ -7,3 +7,16 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;     /* Prevent horizontal overscroll */
+  overscroll-behavior-x: none;
+  width: 100%;
+}
+
+#root {
+  overscroll-behavior-y: contain;
+  touch-action: none;
+}
