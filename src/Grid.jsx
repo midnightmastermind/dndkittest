@@ -24,8 +24,8 @@ function CellDroppable({ r, c, dark }) {
     data: { role: "grid-cell", row: r, col: c }
   });
   useEffect(() => {
-  if (isOver) console.log("🔥 OVER CELL:", r, c);
-}, [isOver]);
+    if (isOver) console.log("🔥 OVER CELL:", r, c);
+  }, [isOver]);
   const highlight = isPanelDrag && isOver;
 
   return (
@@ -277,6 +277,64 @@ export default function Grid({
     });
   };
 
+  // -------------------------------
+  // TOUCH + MOUSE RESIZE HELPERS
+  // -------------------------------
+
+  const getClientX = (e) => (e.touches ? e.touches[0].clientX : e.clientX);
+  const getClientY = (e) => (e.touches ? e.touches[0].clientY : e.clientY);
+
+  // ----- START COLUMN RESIZE -----
+  const startColResize = (e, i) => {
+    e.preventDefault();
+
+    let startX = getClientX(e);
+
+    const move = (ev) => {
+      const delta = getClientX(ev) - startX;
+      startX = getClientX(ev);
+      resizeColumn(i, delta);
+    };
+
+    const stop = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", stop);
+    };
+
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+    window.addEventListener("touchmove", move);
+    window.addEventListener("touchend", stop);
+  };
+
+  // ----- START ROW RESIZE -----
+  const startRowResize = (e, i) => {
+    e.preventDefault();
+
+    let startY = getClientY(e);
+
+    const move = (ev) => {
+      const delta = getClientY(ev) - startY;
+      startY = getClientY(ev);
+      resizeRow(i, delta);
+    };
+
+    const stop = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", stop);
+    };
+
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+    window.addEventListener("touchmove", move);
+    window.addEventListener("touchend", stop);
+  };
+
+
   // ----------------------------------------------------------
   // RENDER
   // ----------------------------------------------------------
@@ -321,19 +379,19 @@ export default function Grid({
         <div
           ref={gridRef}
           style={{
-  position: "absolute",
-  inset: 0,
+            position: "absolute",
+            inset: 0,
 
-  /* ADD THESE */
-  width: "100%",
-  maxWidth: "100%",
-  overflow: "hidden",
-  height: "93vh",
-  display: "grid",
-  gridTemplateColumns: colTemplate,
-  gridTemplateRows: rowTemplate,
-              touchAction: "none",            // ← blocks pull-to-refresh
-           overscrollBehaviorY: "none",    // ← prevents bounce refresh
+            /* ADD THESE */
+            width: "100%",
+            maxWidth: "100%",
+            overflow: "hidden",
+            height: "93vh",
+            display: "grid",
+            gridTemplateColumns: colTemplate,
+            gridTemplateRows: rowTemplate,
+            touchAction: "none",            // ← blocks pull-to-refresh
+            overscrollBehaviorY: "none",    // ← prevents bounce refresh
           }}
         >
           {hoverCell && (
@@ -370,37 +428,21 @@ export default function Grid({
             i < colSizes.length - 1 ? (
               <div
                 key={`col-handle-${i}`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  let startX = e.clientX;
-
-                  const move = (ev) => {
-                    resizeColumn(i, ev.clientX - startX);
-                    startX = ev.clientX;
-                  };
-
-                  const stop = () => {
-                    window.removeEventListener("mousemove", move);
-                    window.removeEventListener("mouseup", stop);
-                  };
-
-                  window.addEventListener("mousemove", move);
-                  window.addEventListener("mouseup", stop);
-                }}
+                onMouseDown={(e) => startColResize(e, i)}
+                onTouchStart={(e) => startColResize(e, i)}
                 style={{
                   position: "absolute",
                   top: 0,
                   bottom: 0,
                   left: `calc(${(100 *
-                    colSizes
-                      .slice(0, i + 1)
-                      .reduce((a, b) => a + b, 0)) /
+                    colSizes.slice(0, i + 1).reduce((a, b) => a + b, 0)) /
                     colSizes.reduce((a, b) => a + b, 0)}%)`,
                   width: 6,
                   marginLeft: -3,
                   cursor: "col-resize",
                   background: "rgba(255,255,255,0.15)",
-                  zIndex: 50
+                  zIndex: 50,
+                  touchAction: "none", // prevents view scrolling during resize
                 }}
               />
             ) : null
@@ -411,37 +453,21 @@ export default function Grid({
             i < rowSizes.length - 1 ? (
               <div
                 key={`row-handle-${i}`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  let startY = e.clientY;
-
-                  const move = (ev) => {
-                    resizeRow(i, ev.clientY - startY);
-                    startY = ev.clientY;
-                  };
-
-                  const stop = () => {
-                    window.removeEventListener("mousemove", move);
-                    window.removeEventListener("mouseup", stop);
-                  };
-
-                  window.addEventListener("mousemove", move);
-                  window.addEventListener("mouseup", stop);
-                }}
+                onMouseDown={(e) => startRowResize(e, i)}
+                onTouchStart={(e) => startRowResize(e, i)}
                 style={{
                   position: "absolute",
                   left: 0,
                   right: 0,
                   top: `calc(${(100 *
-                    rowSizes
-                      .slice(0, i + 1)
-                      .reduce((a, b) => a + b, 0)) /
+                    rowSizes.slice(0, i + 1).reduce((a, b) => a + b, 0)) /
                     rowSizes.reduce((a, b) => a + b, 0)}%)`,
                   height: 6,
                   marginTop: -3,
                   cursor: "row-resize",
                   background: "rgba(255,255,255,0.15)",
-                  zIndex: 50
+                  zIndex: 50,
+                  touchAction: "none",
                 }}
               />
             ) : null
