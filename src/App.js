@@ -63,7 +63,19 @@ const App = () => {
 
 
   return (
-    <div style={{ background: "#1D2125", height: "100vh", overflow: "hidden", position: "relative" }}>
+  <div
+  style={{
+    background: "#1D2125",
+    height: "100vh",
+    overflow: "hidden",
+    position: "relative",
+
+    /* ⭐ ADD THESE THREE */
+    width: "100%",
+    maxWidth: "100%",
+    overflowX: "hidden",
+  }}
+>
       <div
         onMouseLeave={() => setShowToolbar(false)}
         style={{

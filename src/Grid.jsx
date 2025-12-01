@@ -319,11 +319,19 @@ const handleDragStart = (event) => {
         <div
           ref={gridRef}
           style={{
-            position: "absolute",
-            inset: 0,
-            display: "grid",
-            gridTemplateColumns: colTemplate,
-            gridTemplateRows: rowTemplate
+  position: "absolute",
+  inset: 0,
+
+  /* ADD THESE */
+  width: "100%",
+  maxWidth: "100%",
+  overflow: "hidden",
+
+  display: "grid",
+  gridTemplateColumns: colTemplate,
+  gridTemplateRows: rowTemplate,
+              touchAction: "none",            // ← blocks pull-to-refresh
+           overscrollBehaviorY: "none",    // ← prevents bounce refresh
           }}
         >
           {hoverCell && (

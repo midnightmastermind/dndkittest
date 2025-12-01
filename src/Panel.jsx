@@ -22,7 +22,7 @@ export default function Panel({
   const [fullscreen, setFullscreen] = useState(false);
   const prev = useRef(null);
 
-  // ⭐⭐⭐ STABLE DND KIT DATA (fixes data.current being wiped)
+  // ⭐ Stable DND data so data.current never wipes out
   const stableData = React.useMemo(
     () => ({
       role: "panel",
@@ -32,7 +32,7 @@ export default function Panel({
       width: panel.width,
       height: panel.height,
     }),
-    [] // ← MUST stay empty so the object NEVER re-renders
+    [] // MUST stay empty
   );
 
   // ---- DRAG ENABLED UNLESS RESIZING ----
@@ -44,7 +44,9 @@ export default function Panel({
 
   const dragListeners = isResizing ? {} : listeners;
 
-  // ---- FULLSCREEN ----
+  // ------------------------------------------------------
+  // FULLSCREEN
+  // ------------------------------------------------------
   const toggleFullscreen = () => {
     if (!fullscreen) {
       prev.current = { ...panel };
@@ -65,13 +67,14 @@ export default function Panel({
     setFullscreen((f) => !f);
   };
 
-  // ---- Helper: parse FR track sizes ----
+  // ------------------------------------------------------
+  // GRID TRACK UTILITIES
+  // ------------------------------------------------------
   const getTrackInfo = () => {
     const data = gridRef.current?.dataset.sizes;
     return data ? JSON.parse(data) : null;
   };
 
-  // ---- Convert px → column index ----
   const colFromPx = (px) => {
     const { colSizes } = getTrackInfo();
     const rect = gridRef.current.getBoundingClientRect();
@@ -86,7 +89,6 @@ export default function Panel({
     return colSizes.length - 1;
   };
 
-  // ---- Convert px → row index ----
   const rowFromPx = (py) => {
     const { rowSizes } = getTrackInfo();
     const rect = gridRef.current.getBoundingClientRect();
@@ -101,20 +103,25 @@ export default function Panel({
     return rowSizes.length - 1;
   };
 
-  // ---- RESIZE START ----
-  const beginResize = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // ------------------------------------------------------
+  // MOBILE + MOUSE RESIZE HANDLER
+  // ------------------------------------------------------
+  const beginResize = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
     setIsResizing(true);
-  };
 
-  // ---- RESIZE EFFECT ----
-  useEffect(() => {
-    if (!isResizing) return;
+    let startX = event.clientX ?? event.touches?.[0]?.clientX;
+    let startY = event.clientY ?? event.touches?.[0]?.clientY;
 
-    const move = (e) => {
-      const newCol = colFromPx(e.clientX);
-      const newRow = rowFromPx(e.clientY);
+    const move = (ev) => {
+      const clientX = ev.clientX ?? ev.touches?.[0]?.clientX;
+      const clientY = ev.clientY ?? ev.touches?.[0]?.clientY;
+
+      if (clientX == null || clientY == null) return;
+
+      const newCol = colFromPx(clientX);
+      const newRow = rowFromPx(clientY);
 
       const width = Math.max(1, newCol - panel.col + 1);
       const height = Math.max(1, newRow - panel.row + 1);
@@ -129,28 +136,46 @@ export default function Panel({
             : p
         )
       );
+
+      startX = clientX;
+      startY = clientY;
     };
 
-    const stop = () => setIsResizing(false);
+    const stop = () => {
+      setIsResizing(false);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
 
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", stop);
+      window.removeEventListener("touchcancel", stop);
+    };
+
+    // Mouse
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", stop);
 
-    return () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", stop);
-    };
-  }, [isResizing, panel, setPanels, cols, rows]);
+    // Touch
+    window.addEventListener("touchmove", move, { passive: false });
+    window.addEventListener("touchend", stop);
+    window.addEventListener("touchcancel", stop);
+  };
 
+  // ------------------------------------------------------
+  // GRID AREA
+  // ------------------------------------------------------
   const gridArea = `${panel.row + 1} / ${panel.col + 1} / 
                     ${panel.row + panel.height + 1} / 
                     ${panel.col + panel.width + 1}`;
 
+  // ------------------------------------------------------
+  // RENDER
+  // ------------------------------------------------------
   return (
     <div
       ref={(el) => {
         panelRef.current = el;
-        setNodeRef(el); // ⭐ PANEL is draggable
+        setNodeRef(el);
       }}
       {...attributes}
       style={{
@@ -164,14 +189,14 @@ export default function Panel({
         opacity: hidden ? 0 : 1,
         visibility: hidden ? "hidden" : "visible",
 
-        // ⭐ When dragging, panel ignores pointer (overlay controls movement)
+        // ⭐ When dragging, click-through so grid cells receive pointer
         pointerEvents: activeId === panel.id ? "none" : "auto",
+
         zIndex: fullscreen ? 3 : 1,
         position: "relative",
       }}
     >
       <div style={{ display: activeId === panel.id ? "none" : "block" }}>
-
         {/* HEADER */}
         <div
           style={{
@@ -256,7 +281,11 @@ export default function Panel({
           )}
         </div>
 
-        <ResizeHandle onMouseDown={beginResize} />
+        {/* MOBILE-FRIENDLY RESIZE HANDLE */}
+        <ResizeHandle
+          onMouseDown={beginResize}
+          onTouchStart={beginResize}
+        />
       </div>
     </div>
   );
