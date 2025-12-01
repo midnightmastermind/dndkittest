@@ -4,8 +4,8 @@ import Textfield from "@atlaskit/textfield";
 import Grid from "./Grid";
 
 const App = () => {
-  const [rows, setRows] = useState(6);
-  const [cols, setCols] = useState(6);
+  const [rows, setRows] = useState(2);
+  const [cols, setCols] = useState(3);
   const [panels, setPanels] = useState([]);
   const [showToolbar, setShowToolbar] = useState(false);
 
@@ -76,7 +76,6 @@ const App = () => {
   }}
 >
       <div
-        onMouseLeave={() => setShowToolbar(false)}
         style={{
           position: "absolute",
           top: showToolbar ? 0 : "-60px",
@@ -111,7 +110,9 @@ const App = () => {
         <Button appearance="primary" onClick={addPanel}>
           Add Panel
         </Button>
-
+        <Button appearance="warning" onClick={() => setShowToolbar(false)}>
+          Close
+        </Button>
       </div>
 
       <Grid

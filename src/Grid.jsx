@@ -328,7 +328,7 @@ export default function Grid({
   width: "100%",
   maxWidth: "100%",
   overflow: "hidden",
-
+  height: "93vh",
   display: "grid",
   gridTemplateColumns: colTemplate,
   gridTemplateRows: rowTemplate,
