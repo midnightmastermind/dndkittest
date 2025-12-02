@@ -198,13 +198,12 @@ export default function Panel({
         position: "relative",
       }}
     >
-      <div style={{ display: collapsed ? "none" : "block" }}>
+      <div style={{ height: "100%", display: collapsed ? "none" : "flex", flexDirection: "column" }}>
 
         {/* HEADER */}
         <div
           style={{
             background: "#DDE2EB",
-            padding: "6px 12px",
             borderTopLeftRadius: 8,
             borderTopRightRadius: 8,
             display: "flex",

@@ -10,21 +10,22 @@ export default function TaskBox({ panel, tasks, disabled }) {
                 return (
                     <TaskItem
                         key={taskId}
-                        id={String(taskId)}          // ensure string ID
+                        id={taskId}
+                        draggableId={`task-${taskId}-panel-${panel.id}`}   // UNIQUE
                         label={task.label}
                         panelId={panel.id}
-                        disabled={disabled}
                     />
+
                 );
             })}
         </div>
     );
 }
 
-function TaskItem({ id, label, panelId, disabled }) {
+export function TaskItem({ id, draggableId, label, panelId, disabled }) {
     const { setNodeRef, attributes, listeners, transform } = useDraggable({
-        id: String(id),
-        disabled: disabled,  
+        id: draggableId,   // <-- use custom unique ID
+        disabled: disabled,
         data: {
             role: "task",                    // REQUIRED so Grid knows this is a task
             fromPanelId: panelId,
