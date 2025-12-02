@@ -174,15 +174,17 @@ export default function Panel({
   // RENDER
   // ------------------------------------------------------
   return (
-    <div
-      ref={(el) => {
-        panelRef.current = el;
-        setNodeRef(el);
-      }}
-      {...attributes}
-      style={{
-        gridArea,
-
+<div
+  ref={(el) => {
+    panelRef.current = el;
+    setNodeRef(el);
+  }}
+  {...attributes}
+  data-dndkit-droppable="false"            // 🛑 NEW
+  data={{
+    role: "panel-container"                // 🛑 NEW
+  }}
+  style={{gridArea,
         background: token("elevation.surface", "rgba(17,17,17,0.8)"),
         borderRadius: 8,
         border: "1px solid #AAA",

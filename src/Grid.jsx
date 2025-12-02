@@ -175,7 +175,7 @@ export default function Grid({
     setHoverCell({ col, row });
   };
 
-  // ----------------------------------------------------------
+// ----------------------------------------------------------
 // DRAG END
 // ----------------------------------------------------------
 const handleDragEnd = (event) => {
@@ -185,107 +185,99 @@ const handleDragEnd = (event) => {
   const active = event.active;
   const over = event.over;
 
-  console.log("OVER:", over);
-
-  // If nothing under drop → let DnDKit reset naturally
   if (!over) return;
 
   const data = active.data.current;
-  console.log("ACTIVE DATA:", data);
-
-  // -----------------------------
-  // TASK DRAG — TWO WAY FLOW
-  // -----------------------------
   const isTask = data?.role === "task";
 
+  // ==========================================================
+  // 1) TASK DRAG LOGIC
+  // ==========================================================
   if (isTask) {
-    const activeId = active.id;
-    const fromPanelId = data.fromPanelId;
-    const overData = over.data?.current;
+    const activeId = active.id;            // unique draggable instance
+    const taskId = data.taskId;            // logical task id
+    const fromPanelId = data.fromPanelId;  // where it came from
+    const fromSlotId = data.fromSlotId;    // null if from TaskBox
 
-    // ⭐ SAFETY: If role is missing, null, or over a grid cell → return home
-    if (!overData || overData.role === "grid-cell") {
-      console.log("⛔ Task dropped outside any task area → return to origin");
-      return;
-    }
+    const overRole = over.data?.current?.role;
 
-    // --------------------------------------------------
-    // ⭐⭐⭐ 1. TASK → TIMESLOT DROP (NEW SCHEDULE SUPPORT)
-    // --------------------------------------------------
-    if (overData.role === "task-slot") {
-      console.log("✅ Dropping task into time-slot:", overData.slotId);
+    // ----------------------------------------------------------
+    // 1A — TASK → TIMESLOT DROP
+    // ----------------------------------------------------------
+    if (overRole === "task-slot") {
+      const slotPanelId = over.data.current.panelId;
+      const slotId = over.data.current.slotId;
 
-      setPanels((prev) =>
-        prev.map((p) => {
-          if (p.id !== overData.panelId) return p;
+      setPanels((list) =>
+        list.map((p) => {
+          if (p.id !== slotPanelId) return p;
 
-          const slots = p.timeSlots ? { ...p.timeSlots } : {};
+          const existing = p.timeSlots?.[slotId] || [];
 
-          if (!slots[overData.slotId]) slots[overData.slotId] = [];
+          const entry = {
+            taskId: taskId,
+            instanceId: `inst-${taskId}-${Date.now()}-${Math.random()
+              .toString(36)
+              .slice(2)}`,
+          };
 
-          if (!slots[overData.slotId].includes(activeId)) {
-            slots[overData.slotId].push(activeId);
-          }
-
-          return { ...p, timeSlots: slots };
+          return {
+            ...p,
+            timeSlots: {
+              ...p.timeSlots,
+              [slotId]: [...existing, entry],
+            },
+          };
         })
       );
 
       return;
     }
 
-    // --------------------------------------------------
-    // ⭐⭐⭐ 2. TASK → TASKBOX DROP (existing logic)
-    // --------------------------------------------------
+    // ----------------------------------------------------------
+    // 1B — TASK MOVED BETWEEN PANELS (Original system)
+    // ----------------------------------------------------------
     const toPanelId = over.id;
 
-    if (!toPanelId || !fromPanelId) {
-      console.log("⛔ Missing panel information → return home");
+    // only run this path if the drop target *is* a panel
+    if (
+      toPanelId &&
+      fromPanelId &&
+      overRole !== "grid-cell" &&
+      overRole !== "task-slot"
+    ) {
+      setPanels((list) =>
+        list.map((p) => {
+          if (p.id === fromPanelId) {
+            return {
+              ...p,
+              tasks: p.tasks.filter((t) => t !== taskId),
+            };
+          }
+          if (p.id === toPanelId) {
+            return {
+              ...p,
+              tasks: [...p.tasks, taskId],
+            };
+          }
+          return p;
+        })
+      );
+
       return;
     }
-
-    // ignore grid cell drop
-    if (overData.role === "grid-cell") {
-      console.log("⛔ Can't drop task on grid cell");
-      return;
-    }
-
-    console.log("↔ Two-way task move:", { fromPanelId, toPanelId });
-
-    setPanels((list) =>
-      list.map((p) => {
-        if (p.id === fromPanelId) {
-          return {
-            ...p,
-            tasks: p.tasks.filter((t) => t !== activeId),
-          };
-        }
-        if (p.id === toPanelId) {
-          return {
-            ...p,
-            tasks: [...p.tasks, activeId],
-          };
-        }
-        return p;
-      })
-    );
 
     return;
   }
 
-  // -----------------------------
-  // PANEL DRAG — GRID MOVE
-  // -----------------------------
+  // ==========================================================
+  // 2) PANEL DRAG LOGIC
+  // ==========================================================
   if (data?.role === "panel") {
-    console.log("Hit PANEL");
-
     const pointer = getPointerXY(event);
-    console.log("PANEL POINTER:", pointer);
-
     if (!pointer) return;
 
     const { col, row } = getCellFromPointer(pointer.x, pointer.y);
-    console.log("📌 PANEL DROP TARGET:", { row, col });
 
     setPanels((list) =>
       list.map((p) =>
@@ -298,7 +290,6 @@ const handleDragEnd = (event) => {
     return;
   }
 };
-
 
   // resizing
   const resizeColumn = (i, movement) => {
