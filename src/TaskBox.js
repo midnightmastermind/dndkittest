@@ -10,7 +10,7 @@ export default function TaskBox({ panel, tasks, disabled }) {
 
         // ⭐ TaskBox does NOT provide instanceId
         // A new instanceId will be created when dropped into a time-slot
-        const draggableId = `taskbox-${taskId}-${Math.random()}`;
+        const draggableId = `taskbox-${taskId}`;
 
         return (
           <TaskItem

@@ -55,6 +55,7 @@ export default function Grid({
 }) {
   const gridRef = useRef(null);
   const [activeId, setActiveId] = useState(null);
+  const [innerDropDisabled, setInnerDropDisabled] = useState(false);
 
   const [colSizes, setColSizes] = useState(() => Array(cols).fill(1));
   const [rowSizes, setRowSizes] = useState(() => Array(rows).fill(1));
@@ -108,7 +109,7 @@ export default function Grid({
         break;
       }
     }
-
+    console.log(row,col);
     return { col, row };
   };
 
@@ -122,9 +123,6 @@ export default function Grid({
       y: data.pointerStart.y + event.delta.y
     };
   };
-
-
-  const [hoverCell, setHoverCell] = useState(null);
 
   // ----------------------------------------------------------
   // DRAG START
@@ -140,14 +138,15 @@ export default function Grid({
     if (!event.active.data.current) {
       event.active.data.current = { ...event.active.data };
     }
-
+    const { col, row } = getCellFromPointer(clientX,clientY);
+    console.log(col, row);
     // DO NOT SPREAD event.active.data.current (it resets keys)
     event.active.data.current.pointerStart = {
       x: clientX,
       y: clientY
     };
 
-    console.log("dragStart data:", event.active.data.current);
+    console.log("dragStart data:", event);
   };
 
 
@@ -161,18 +160,9 @@ export default function Grid({
     console.log("DRAGGED:", data);
     console.log("OVER:", event.over);
 
-
-    // If it's not a panel, don't show a hover cell
-    if (data?.type !== "panel") {
-      setHoverCell(null);
-      return;
+    if (data?.role === "panel" && !innerDropDisabled) {
+      setInnerDropDisabled(true);
     }
-
-    const pointer = getPointerXY(event);
-    if (!pointer) return;
-
-    const { col, row } = getCellFromPointer(pointer.x, pointer.y);
-    setHoverCell({ col, row });
   };
 
 // ----------------------------------------------------------
@@ -180,7 +170,6 @@ export default function Grid({
 // ----------------------------------------------------------
 const handleDragEnd = (event) => {
   setActiveId(null);
-  setHoverCell(null);
 
   const active = event.active;
   const over = event.over;
@@ -190,6 +179,7 @@ const handleDragEnd = (event) => {
   const data = active.data.current;
   const isTask = data?.role === "task";
 
+  setInnerDropDisabled(false);
   // ==========================================================
   // 1) TASK DRAG LOGIC
   // ==========================================================
@@ -381,7 +371,7 @@ const handleDragEnd = (event) => {
     window.addEventListener("touchend", stop);
   };
 
-
+  console.log(innerDropDisabled);
   // ----------------------------------------------------------
   // RENDER
   // ----------------------------------------------------------
@@ -441,20 +431,6 @@ const handleDragEnd = (event) => {
             overscrollBehaviorY: "none",    // ← prevents bounce refresh
           }}
         >
-          {hoverCell && (
-            <div
-              style={{
-                gridColumnStart: hoverCell.col + 1,
-                gridRowStart: hoverCell.row + 1,
-                gridColumnEnd: hoverCell.col + 2,
-                gridRowEnd: hoverCell.row + 2,
-                background: "rgba(50,150,255,0.45)",
-                pointerEvents: "none",
-                zIndex: 5
-              }}
-            />
-          )}
-
           {/* checkerboard droppable cells */}
           {[...Array(rows)].map((_, r) =>
             [...Array(cols)].map((_, c) => {
@@ -488,7 +464,7 @@ const handleDragEnd = (event) => {
                   marginLeft: -3,
                   cursor: "col-resize",
                   background: "rgba(255,255,255,0.15)",
-                  zIndex: 50,
+                  zIndex: 1,
                   touchAction: "none", // prevents view scrolling during resize
                 }}
               />
@@ -513,7 +489,7 @@ const handleDragEnd = (event) => {
                   marginTop: -3,
                   cursor: "row-resize",
                   background: "rgba(255,255,255,0.15)",
-                  zIndex: 50,
+                  zIndex: 1,
                   touchAction: "none",
                 }}
               />
@@ -531,6 +507,7 @@ const handleDragEnd = (event) => {
               cols={cols}
               rows={rows}
               activeId={activeId}
+              innerDropDisabled={innerDropDisabled}
             />
           ))}
 

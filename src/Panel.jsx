@@ -15,14 +15,14 @@ export default function Panel({
   cols,
   rows,
   activeId,
-  hidden
+  innerDropDisabled
 }) {
   const panelRef = useRef(null);
   const [isResizing, setIsResizing] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const prev = useRef(null);
 
-  // ⭐⭐⭐ DND-Kit stable data (never updates → never gets wiped)
+  // ⭐ Stable DnD kit data
   const stableData = React.useMemo(
     () => ({
       role: "panel",
@@ -32,10 +32,10 @@ export default function Panel({
       width: panel.width,
       height: panel.height,
     }),
-    [] // MUST stay empty
+    []
   );
 
-  // ---- DRAG ENABLED UNLESS RESIZING ----
+  // ⭐ Drag handle
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: panel.id,
     disabled: isResizing,
@@ -44,10 +44,11 @@ export default function Panel({
 
   const dragListeners = isResizing ? {} : listeners;
 
-  // ⭐ SHRINK WHILE DRAGGING (panel stops blocking grid)
-  const collapsed = activeId === panel.id;
+  const isDragging = activeId === panel.id;
 
-  // ---- FULLSCREEN ----
+  // -------------------
+  // FULLSCREEN
+  // -------------------
   const toggleFullscreen = () => {
     if (!fullscreen) {
       prev.current = { ...panel };
@@ -68,9 +69,9 @@ export default function Panel({
     setFullscreen((f) => !f);
   };
 
-  // ------------------------------------------------------
-  // GRID TRACK UTILITIES
-  // ------------------------------------------------------
+  // ------------------------
+  // GRID TRACK HELPERS
+  // ------------------------
   const getTrackInfo = () => {
     const data = gridRef.current?.dataset.sizes;
     return data ? JSON.parse(data) : null;
@@ -104,21 +105,23 @@ export default function Panel({
     return rowSizes.length - 1;
   };
 
-  // ------------------------------------------------------
-  // MOBILE + MOUSE RESIZE HANDLER
-  // ------------------------------------------------------
+  // ------------------
+  // RESIZE LOGIC
+  // ------------------
   const beginResize = (event) => {
     event.preventDefault();
     event.stopPropagation();
     setIsResizing(true);
 
-    let startX = event.clientX ?? event.touches?.[0]?.clientX;
-    let startY = event.clientY ?? event.touches?.[0]?.clientY;
+    const getX = (ev) => ev.clientX ?? ev.touches?.[0]?.clientX;
+    const getY = (ev) => ev.clientY ?? ev.touches?.[0]?.clientY;
+
+    let startX = getX(event);
+    let startY = getY(event);
 
     const move = (ev) => {
-      const clientX = ev.clientX ?? ev.touches?.[0]?.clientX;
-      const clientY = ev.clientY ?? ev.touches?.[0]?.clientY;
-
+      const clientX = getX(ev);
+      const clientY = getY(ev);
       if (clientX == null || clientY == null) return;
 
       const newCol = colFromPx(clientX);
@@ -127,13 +130,14 @@ export default function Panel({
       const width = Math.max(1, newCol - panel.col + 1);
       const height = Math.max(1, newRow - panel.row + 1);
 
-      const boundedW = Math.min(width, cols - panel.col);
-      const boundedH = Math.min(height, rows - panel.row);
-
       setPanels((list) =>
         list.map((p) =>
           p.id === panel.id
-            ? { ...p, width: boundedW, height: boundedH }
+            ? {
+                ...p,
+                width: Math.min(width, cols - panel.col),
+                height: Math.min(height, rows - panel.row),
+              }
             : p
         )
       );
@@ -146,62 +150,44 @@ export default function Panel({
       setIsResizing(false);
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", stop);
-
       window.removeEventListener("touchmove", move);
       window.removeEventListener("touchend", stop);
       window.removeEventListener("touchcancel", stop);
     };
 
-    // Mouse
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", stop);
-
-    // Touch
     window.addEventListener("touchmove", move, { passive: false });
     window.addEventListener("touchend", stop);
     window.addEventListener("touchcancel", stop);
   };
 
-  // ⭐ Collapsed gridArea when dragging
-  const gridArea = collapsed
-    ? `${panel.row + 1} / ${panel.col + 1} /
-       ${panel.row + 2} / ${panel.col + 2}`
-    : `${panel.row + 1} / ${panel.col + 1} /
-       ${panel.row + panel.height + 1} /
-       ${panel.col + panel.width + 1}`;
+  const gridArea = `${panel.row + 1} / ${panel.col + 1} /
+                    ${panel.row + panel.height + 1} /
+                    ${panel.col + panel.width + 1}`;
 
-  // ------------------------------------------------------
-  // RENDER
-  // ------------------------------------------------------
   return (
-<div
-  ref={(el) => {
-    panelRef.current = el;
-    setNodeRef(el);
-  }}
-  {...attributes}
-  data-dndkit-droppable="false"            // 🛑 NEW
-  data={{
-    role: "panel-container"                // 🛑 NEW
-  }}
-  style={{gridArea,
-        background: token("elevation.surface", "rgba(17,17,17,0.8)"),
+    <div
+      ref={(el) => {
+        panelRef.current = el;
+        setNodeRef(el);
+      }}
+      {...attributes}
+      data-dndkit-droppable="false"
+      style={{
+        gridArea,
+        background: token("elevation.surface", "rgba(17,17,17,0.95)"),
         borderRadius: 8,
         border: "1px solid #AAA",
         overflow: "hidden",
         userSelect: "none",
-
-        // ⭐ collapse + hide original panel while dragging
-        opacity: collapsed ? 0 : 1,
-        visibility: collapsed ? "hidden" : "visible",
-        pointerEvents: collapsed ? "none" : "auto",
-
-        zIndex: fullscreen ? 3 : 1,
+        pointerEvents: isDragging ? "none" : "auto",   // ⭐ instead of hiding the panel
         position: "relative",
+        margin: "1px",
+        zIndex: fullscreen ? 50 : 5,
       }}
     >
-      <div style={{ height: "100%", display: collapsed ? "none" : "flex", flexDirection: "column" }}>
-
+      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
         {/* HEADER */}
         <div
           style={{
@@ -228,7 +214,6 @@ export default function Panel({
                 )
               );
             }}
-            style={{ marginLeft: 12, zIndex: 5 }}
           >
             <option value="taskbox">TaskBox</option>
             <option value="schedule">Schedule</option>
@@ -270,7 +255,6 @@ export default function Panel({
               tasks={tasks}
               setTasks={setTasks}
               fromPanelId={panel.id}
-              disabled={fullscreen}
             />
           )}
 
@@ -280,11 +264,11 @@ export default function Panel({
               tasks={tasks}
               setTasks={setTasks}
               fromPanelId={panel.id}
+              innerDropDisabled={innerDropDisabled}
             />
           )}
         </div>
 
-        {/* MOBILE-FRIENDLY RESIZE HANDLE */}
         <ResizeHandle
           onMouseDown={beginResize}
           onTouchStart={beginResize}

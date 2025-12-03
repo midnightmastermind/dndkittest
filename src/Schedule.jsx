@@ -1,7 +1,8 @@
-// Schedule.jsx
+import React from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { TaskItem } from "./TaskBox";
 
+// Build 24h time slots (memoized by module scope)
 const TIME_SLOTS = (() => {
   const slots = [];
   const formatLabel = (hour, minute) => {
@@ -16,7 +17,6 @@ const TIME_SLOTS = (() => {
       const id = `${h.toString().padStart(2, "0")}:${m
         .toString()
         .padStart(2, "0")}`;
-
       slots.push({
         id,
         label: formatLabel(h, m),
@@ -28,11 +28,12 @@ const TIME_SLOTS = (() => {
   return slots;
 })();
 
-function TimeSlot({ panel, slot, tasks }) {
+const TimeSlot = React.memo(function TimeSlot({ panel, slot, tasks, innerDropDisabled }) {
   const droppableId = `${panel.id}-slot-${slot.id}`;
 
   const { setNodeRef, isOver } = useDroppable({
     id: droppableId,
+    disabled: innerDropDisabled,
     data: {
       role: "task-slot",
       panelId: panel.id,
@@ -40,7 +41,6 @@ function TimeSlot({ panel, slot, tasks }) {
     },
   });
 
-  // ⭐ Always normalized entries
   const slotEntries = (panel.timeSlots?.[slot.id] || []).map((entry) => ({
     taskId: entry.taskId,
     instanceId: entry.instanceId,
@@ -102,9 +102,26 @@ function TimeSlot({ panel, slot, tasks }) {
       </div>
     </div>
   );
-}
+},
+// -------------------------
+// Memo comparison function
+// -------------------------
+(prev, next) => {
+  // If the panel changed slots array for this slot, re-render
+  const prevSlot = prev.panel.timeSlots?.[prev.slot.id] || [];
+  const nextSlot = next.panel.timeSlots?.[next.slot.id] || [];
+  if (prevSlot !== nextSlot) return false;
 
-export default function Schedule({ panel, tasks }) {
+  // If tasks list changes (labels), re-render
+  if (prev.tasks !== next.tasks) return false;
+
+  // Slot itself never changes (static), so ignore it.
+  return true;
+});
+
+
+const Schedule = React.memo(function Schedule({ panel, tasks, innerDropDisabled }) {
+    console.log(innerDropDisabled);
   return (
     <div
       style={{
@@ -112,13 +129,23 @@ export default function Schedule({ panel, tasks }) {
         borderRadius: 8,
         border: "1px dashed #aaa",
         background: "rgba(255,255,255,0.06)",
-        overflowY: "auto",
+        overflowY: innerDropDisabled ? "hidden" : "auto",
         userSelect: "none",
       }}
     >
       {TIME_SLOTS.map((slot) => (
-        <TimeSlot key={slot.id} panel={panel} slot={slot} tasks={tasks} />
+        <TimeSlot key={slot.id} panel={panel} slot={slot} tasks={tasks} innerDropDisabled={innerDropDisabled}/>
       ))}
     </div>
   );
-}
+},
+// Compare only this panel + tasks
+(prev, next) => {
+  if (prev.panel !== next.panel) return false;
+  if (prev.tasks !== next.tasks) return false;
+  return true;
+});
+
+export default Schedule;
+
+
