@@ -7,6 +7,7 @@ import {
   DragOverlay,
   pointerWithin,
   useDndContext,
+  TouchSensor
 } from "@dnd-kit/core";
 
 import Panel from "./Panel";
@@ -34,8 +35,8 @@ function CellDroppable({ r, c, dark }) {
         background: highlight
           ? "rgba(50,150,255,0.45)"
           : dark
-          ? "#22272B"
-          : "#2C333A",
+            ? "#22272B"
+            : "#2C333A",
         border: "1px solid #3F444A",
         transition: "background 80ms",
       }}
@@ -85,6 +86,12 @@ export default function Grid({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 4 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150,       // prevents accidental scroll drags
+        tolerance: 8,     // recommended for mobile
+      },
     })
   );
 
@@ -263,9 +270,10 @@ export default function Grid({
     let startX = getClientX(e);
 
     const move = (ev) => {
-      const newX = getClientX(ev);
-      const delta = newX - startX;
-      startX = newX;
+      ev.preventDefault();                     // <-- mobile fix
+      const currentX = getClientX(ev);
+      const delta = currentX - startX;
+      startX = currentX;
       resizeColumn(i, delta);
     };
 
@@ -287,11 +295,13 @@ export default function Grid({
     let startY = getClientY(e);
 
     const move = (ev) => {
-      const newY = getClientY(ev);
-      const delta = newY - startY;
-      startY = newY;
+      ev.preventDefault();                     // <-- mobile fix
+      const currentY = getClientY(ev);
+      const delta = currentY - startY;
+      startY = currentY;
       resizeRow(i, delta);
     };
+
 
     const stop = () => {
       window.removeEventListener("mousemove", move);
