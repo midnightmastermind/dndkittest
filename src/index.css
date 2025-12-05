@@ -20,3 +20,16 @@ html, body {
   overscroll-behavior-y: contain;
   touch-action: none;
 }
+
+/* Remove browser ghost-preview completely */
+.dnd-kit-drag-image,
+.dnd-kit-drag-image * {
+  opacity: 0 !important;
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* Stop drag from affecting layout during movement */
+.dnd-kit-dragging {
+  contain: layout paint size style;
+}

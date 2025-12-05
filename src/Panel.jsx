@@ -1,54 +1,56 @@
-import React, { useRef, useState, useEffect } from "react";
-import Button from "@atlaskit/button";
-import ResizeHandle from "./ResizeHandle";
-import { token } from "@atlaskit/tokens";
+import React, { useRef, useState, useMemo } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import TaskBox from "./TaskBox";
-import Schedule from "./Schedule";
+import ResizeHandle from "./ResizeHandle";
+import Button from "@atlaskit/button";
+import { token } from "@atlaskit/tokens";
 
 export default function Panel({
   panel,
+  components,
   setPanels,
-  tasks,
-  setTasks,
   gridRef,
   cols,
   rows,
   activeId,
-  innerDropDisabled
+  gridActive
 }) {
   const panelRef = useRef(null);
   const [isResizing, setIsResizing] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const prev = useRef(null);
 
-  // ⭐ Stable DnD kit data
-  const stableData = React.useMemo(
+  // -------------------------------
+  // Injected Component
+  // -------------------------------
+  const RenderedComponent = components[panel.type];
+
+  // -------------------------------
+  // DnD Data
+  // -------------------------------
+  const data = useMemo(
     () => ({
       role: "panel",
       panelId: panel.id,
-      fromRow: panel.row,
       fromCol: panel.col,
+      fromRow: panel.row,
       width: panel.width,
       height: panel.height,
     }),
-    []
+    [panel.id, panel.col, panel.row, panel.width, panel.height]
   );
 
-  // ⭐ Drag handle
-  const { attributes, listeners, setNodeRef } = useDraggable({
+  const { setNodeRef, attributes, listeners } = useDraggable({
     id: panel.id,
     disabled: isResizing,
-    data: stableData,
+    data,
   });
 
   const dragListeners = isResizing ? {} : listeners;
-
   const isDragging = activeId === panel.id;
 
-  // -------------------
+  // -------------------------------
   // FULLSCREEN
-  // -------------------
+  // -------------------------------
   const toggleFullscreen = () => {
     if (!fullscreen) {
       prev.current = { ...panel };
@@ -66,12 +68,12 @@ export default function Panel({
         )
       );
     }
-    setFullscreen((f) => !f);
+    setFullscreen((v) => !v);
   };
 
-  // ------------------------
-  // GRID TRACK HELPERS
-  // ------------------------
+  // -------------------------------
+  // GRID HELPERS
+  // -------------------------------
   const getTrackInfo = () => {
     const data = gridRef.current?.dataset.sizes;
     return data ? JSON.parse(data) : null;
@@ -105,9 +107,9 @@ export default function Panel({
     return rowSizes.length - 1;
   };
 
-  // ------------------
-  // RESIZE LOGIC
-  // ------------------
+  // -------------------------------
+  // RESIZE HANDLER
+  // -------------------------------
   const beginResize = (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -116,13 +118,9 @@ export default function Panel({
     const getX = (ev) => ev.clientX ?? ev.touches?.[0]?.clientX;
     const getY = (ev) => ev.clientY ?? ev.touches?.[0]?.clientY;
 
-    let startX = getX(event);
-    let startY = getY(event);
-
     const move = (ev) => {
       const clientX = getX(ev);
       const clientY = getY(ev);
-      if (clientX == null || clientY == null) return;
 
       const newCol = colFromPx(clientX);
       const newRow = rowFromPx(clientY);
@@ -141,9 +139,6 @@ export default function Panel({
             : p
         )
       );
-
-      startX = clientX;
-      startY = clientY;
     };
 
     const stop = () => {
@@ -173,21 +168,21 @@ export default function Panel({
         setNodeRef(el);
       }}
       {...attributes}
-      data-dndkit-droppable="false"
       style={{
         gridArea,
         background: token("elevation.surface", "rgba(17,17,17,0.95)"),
         borderRadius: 8,
         border: "1px solid #AAA",
         overflow: "hidden",
-        userSelect: "none",
-        pointerEvents: isDragging ? "none" : "auto",   // ⭐ instead of hiding the panel
         position: "relative",
         margin: "1px",
         zIndex: fullscreen ? 50 : 5,
+        pointerEvents: isDragging ? "none" : "auto",
       }}
     >
+      {/* PANEL FRAME */}
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        
         {/* HEADER */}
         <div
           style={{
@@ -202,7 +197,7 @@ export default function Panel({
             zIndex: fullscreen ? 3 : 1,
           }}
         >
-          <div style={{ pointerEvents: "none" }}>☰ Panel</div>
+          <div style={{ paddingLeft: 6 }}>{panel.label || "Panel"}</div>
 
           <select
             value={panel.type}
@@ -215,8 +210,11 @@ export default function Panel({
               );
             }}
           >
-            <option value="taskbox">TaskBox</option>
-            <option value="schedule">Schedule</option>
+            {Object.keys(components).map((key) => (
+              <option key={key} value={key}>
+                {key}
+              </option>
+            ))}
           </select>
 
           <Button spacing="compact" onClick={toggleFullscreen}>
@@ -231,9 +229,9 @@ export default function Panel({
               left: 0,
               top: 0,
               bottom: 0,
-              width: 50,
-              background: "rgba(255,0,0,0.3)",
+              width: 40,
               cursor: isResizing ? "default" : "grab",
+              background: "rgba(0,0,0,0.1)",
               zIndex: 10,
               touchAction: "none",
             }}
@@ -243,36 +241,23 @@ export default function Panel({
         {/* CONTENT */}
         <div
           style={{
-            padding: 12,
+            padding: 10,
             color: "white",
             height: "100%",
             overflow: "hidden",
           }}
         >
-          {panel.type === "taskbox" && (
-            <TaskBox
-              panel={panel}
-              tasks={tasks}
-              setTasks={setTasks}
-              fromPanelId={panel.id}
-            />
-          )}
-
-          {panel.type === "schedule" && (
-            <Schedule
-              panel={panel}
-              tasks={tasks}
-              setTasks={setTasks}
-              fromPanelId={panel.id}
-              innerDropDisabled={innerDropDisabled}
+          {RenderedComponent && (
+            <RenderedComponent
+              {...panel.props}
+              panelId={panel.id}
+              gridActive={gridActive}
             />
           )}
         </div>
 
-        <ResizeHandle
-          onMouseDown={beginResize}
-          onTouchStart={beginResize}
-        />
+        {/* RESIZE HANDLE */}
+        <ResizeHandle onMouseDown={beginResize} onTouchStart={beginResize} />
       </div>
     </div>
   );
