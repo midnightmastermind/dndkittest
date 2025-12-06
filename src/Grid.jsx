@@ -86,8 +86,8 @@ export default function Grid({
   const sensors = useSensors(
   useSensor(TouchSensor, {
     activationConstraint: {
-      delay: 120,     // time finger must hold before drag begins
-      tolerance: 5,   // movement allowed before cancelling drag
+      delay: 500,     // time finger must hold before drag begins
+      tolerance: 8,   // movement allowed before cancelling drag
     }
   }),
   useSensor(PointerSensor) // optional fallback for mouse

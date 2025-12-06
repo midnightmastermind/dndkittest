@@ -33,30 +33,45 @@ export default function SortableItem({ instanceId, containerId }) {
         background: "#2F343A",
         border: "1px solid #444",
         borderRadius: 6,
-        padding: "8px 10px",
+        padding: "2px 10px",
         marginBottom: 6,
         color: "white",
         cursor: "grab",
         userSelect: "none",
         fontSize: 14
     };
-
+const isDragDisabled = (eventTarget) => {
+  return eventTarget.closest("[data-dndkit-disable-drag]");
+};
+const handleClick = () => {
+  alert("Button clicked!");
+};
     return (
-       <div
-  ref={setNodeRef}
-  {...attributes}
-  {...listeners}
-  style={{
-    transform: CSS.Transform.toString(transform),
-    transition,
-    touchAction: "none",
-    ...style,
-    touchAction: "none",
-    WebkitUserSelect: "none",
-    userSelect: "none",
-  }}
->
-            {label}
-        </div>
-    );
+  <div
+    ref={setNodeRef}
+    {...attributes}
+    {...listeners}
+    style={{
+      transform: CSS.Transform.toString(transform),
+      transition,
+      ...style,
+      touchAction: "none",
+      display: "flex"
+    }}
+  >
+    <button
+      data-dndkit-disable-drag
+      onClick={handleClick}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      style={{ marginLeft: -10, height: "115%", marginTop:-2, marginDown: -10, marginRight: 10 }}
+    >
+      o
+    </button>
+
+    {label}
+  </div>
+);
 }
