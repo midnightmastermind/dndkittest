@@ -1,5 +1,5 @@
 // SortableItem.jsx — FINAL MERGED VERSION
-import React, { useContext } from "react";
+import React, { useContext, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ScheduleContext } from "./ScheduleContext";
@@ -25,7 +25,7 @@ export default function SortableItem({ instanceId, containerId }) {
             containerId
         }
     });
-
+    const [isOpen, setIsOpen] = useState(false);
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
@@ -44,7 +44,7 @@ const isDragDisabled = (eventTarget) => {
   return eventTarget.closest("[data-dndkit-disable-drag]");
 };
 const handleClick = () => {
-  alert("Button clicked!");
+  setIsOpen(!isOpen)
 };
     return (
   <div
@@ -56,7 +56,9 @@ const handleClick = () => {
       transition,
       ...style,
       touchAction: "none",
-      display: "flex"
+      display: "flex",
+      height: isOpen ? "100px" : "30px",
+      alignItems: "center"
     }}
   >
     <button
@@ -66,7 +68,7 @@ const handleClick = () => {
       onTouchStart={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
-      style={{ marginLeft: -10, height: "115%", marginTop:-2, marginDown: -10, marginRight: 10 }}
+      style={{ marginLeft: -10, height: "33px", width: "30px", marginTop:-2, marginDown: -10, marginRight: 5 }}
     >
       o
     </button>
