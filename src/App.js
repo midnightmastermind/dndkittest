@@ -9,6 +9,7 @@ import Schedule from "./Schedule";
 import SortableItem from "./SortableItem";
 import { ScheduleContext } from "./ScheduleContext";
 
+import "./index.css";
 export default function App() {
 
   // --------------------------------------------

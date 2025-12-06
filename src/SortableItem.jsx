@@ -42,7 +42,20 @@ export default function SortableItem({ instanceId, containerId }) {
     };
 
     return (
-        <div ref={setNodeRef} {...attributes} {...listeners} style={style}>
+       <div
+  ref={setNodeRef}
+  {...attributes}
+  {...listeners}
+  style={{
+    transform: CSS.Transform.toString(transform),
+    transition,
+    touchAction: "none",
+    ...style,
+    touchAction: "none",
+    WebkitUserSelect: "none",
+    userSelect: "none",
+  }}
+>
             {label}
         </div>
     );

@@ -84,16 +84,14 @@ export default function Grid({
   const rowTemplate = rowSizes.map((s) => `${s}fr`).join(" ");
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 4 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 150,       // prevents accidental scroll drags
-        tolerance: 8,     // recommended for mobile
-      },
-    })
-  );
+  useSensor(TouchSensor, {
+    activationConstraint: {
+      delay: 120,     // time finger must hold before drag begins
+      tolerance: 5,   // movement allowed before cancelling drag
+    }
+  }),
+  useSensor(PointerSensor) // optional fallback for mouse
+);
 
   const getPanel = (id) => panels.find((p) => p.id === id);
 
