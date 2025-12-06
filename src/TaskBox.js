@@ -1,205 +1,89 @@
-// TaskBox.jsx — INSTANCE-ONLY PANEL STORAGE
+// TaskBox.jsx — now includes “Add Task” button
 
 import React, { useContext } from "react";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ScheduleContext } from "./ScheduleContext";
-
-import { useDroppable } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-
 import SortableItem from "./SortableItem";
 
-export default function TaskBox({ panelId, instanceIds = [] }) {
-  const {
-    tasks,
-    setTasks,          // <— MUST BE HERE
-    instanceStoreRef,
-    panels,
-    setPanels
-  } = useContext(ScheduleContext);
+export default function TaskBox({ panelId, containerId }) {
+  const { containerState, setContainerState, instanceStoreRef } =
+    useContext(ScheduleContext);
 
-  const instanceStore = instanceStoreRef.current;
+  const instanceIds = containerState[containerId] || [];
 
-  // --------------------------------------------------------------------
-  // 🟩 FULL LIST DROPPABLE OVERLAY
-  // --------------------------------------------------------------------
-  const { setNodeRef: setListZoneRef, isOver: listIsOver } = useDroppable({
-    id: `dropzone-list-${panelId}`,
-    data: {
-      role: "taskbox",
-      panelId,
-    },
-  });
-
-  // --------------------------------------------------------------------
-  // 🟩 EMPTY PANEL DROP ZONE
-  // --------------------------------------------------------------------
-  const { setNodeRef: setEmptyZoneRef, isOver: emptyIsOver } = useDroppable({
-    id: `dropzone-empty-${panelId}`,
-    disabled: instanceIds.length > 0,
-    data: {
-      role: "taskbox-empty",
-      panelId,
-    },
-  });
-
-  // --------------------------------------------------------------------
-  // 🟩 BOTTOM DROP ZONE (append)
-  // --------------------------------------------------------------------
-  const { setNodeRef: setBottomZoneRef } = useDroppable({
-    id: `dropzone-bottom-${panelId}`,
-    data: {
-      role: "taskbox-bottom",
-      panelId,
-    },
-  });
-
-  // --------------------------------------------------------------------
-  // 🟩 "Add Task" — creates *single-mode* NEW TASK + instance
-  // --------------------------------------------------------------------
+  // ----------------------------------------------------
+  // ADD NEW TASK TO THIS TASKBOX
+  // ----------------------------------------------------
   const handleAddTask = () => {
     const taskId = crypto.randomUUID();
-    const instanceId = crypto.randomUUID();
+    const instId = crypto.randomUUID();
 
-    // Register instance in global store
-    instanceStore[instanceId] = { taskId };
-
-    // Create full task definition
-    const newTask = {
+    // 1️⃣ store instance info
+    instanceStoreRef.current[instId] = {
       taskId,
-      label: `Task ${instanceIds.length + 1}`,
-      duplicateMode: "single",
+      instanceId: instId,
+      label: `New Task`
     };
 
-    // Add task to GLOBAL tasks list
-    setTasks(prev => [...prev, newTask]);
-
-    // Append instance to this TaskBox panel
-    setPanels(prev =>
-      prev.map(p =>
-        p.id === panelId
-          ? {
-            ...p,
-            props: {
-              ...p.props,
-              instanceIds: [...p.props.instanceIds, instanceId],
-            },
-          }
-          : p
-      )
-    );
+    // 2️⃣ append to this TaskBox container
+    setContainerState(prev => ({
+      ...prev,
+      [containerId]: [...(prev[containerId] || []), instId]
+    }));
   };
 
-  // --------------------------------------------------------------------
-  // 🟩 Sortable list uses INSTANCE IDs only
-  // --------------------------------------------------------------------
   return (
     <div
+      className="taskbox"
+      data-role="taskbox"
+      data-containerid={containerId}
       style={{
-        background: "rgba(255,255,255,0.05)",
+        width: "100%",
         height: "100%",
+        overflowY: "auto",
         display: "flex",
-        flexDirection: "column",
+        flexDirection: "column"
       }}
     >
-      {/* Add Task button */}
+      {/* SORTABLE ITEMS */}
+      <SortableContext
+        id={containerId}
+        items={instanceIds}
+        strategy={verticalListSortingStrategy}
+        data={{
+          role: "task-container",
+          containerId
+        }}
+      >
+        {instanceIds.map(instId => {
+          const inst = instanceStoreRef.current[instId];
+          if (!inst) return null;
+
+          return (
+            <SortableItem
+              key={instId}
+              instanceId={instId}
+              containerId={containerId}
+            />
+          );
+        })}
+      </SortableContext>
+
+      {/* ADD TASK BUTTON */}
       <button
         onClick={handleAddTask}
         style={{
+          marginTop: "auto",
           padding: "6px 10px",
-          marginBottom: 8,
-          background: "#3A4",
-          borderRadius: 6,
+          background: "#3A3F45",
           color: "white",
-          border: "none",
+          border: "1px solid #555",
+          borderRadius: 6,
+          cursor: "pointer"
         }}
       >
         + Add Task
       </button>
-
-      {/* Scrollable list container */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: 6,
-          overflowX: "hidden",
-          position: "relative",
-        }}
-      >
-        {/* Invisible droppable overlay */}
-        <div
-          ref={setListZoneRef}
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: -1,
-            pointerEvents: "none",
-          }}
-        />
-
-        {/* Empty state */}
-        {instanceIds.length === 0 && (
-          <div
-            ref={setEmptyZoneRef}
-            style={{
-              height: 80,
-              borderRadius: 6,
-              border: "2px dashed rgba(255,255,255,0.2)",
-              background: emptyIsOver
-                ? "rgba(80,200,80,0.20)"
-                : "rgba(255,255,255,0.06)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#aaa",
-              fontSize: 12,
-            }}
-          >
-            Drop task here
-          </div>
-        )}
-
-        {/* Sortable instance list (vertical) */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <SortableContext
-            items={instanceIds}
-            strategy={verticalListSortingStrategy}
-          >
-            {instanceIds.map((instanceId) => {
-              const inst = instanceStore[instanceId];
-              if (!inst) return null;
-
-              const task = tasks.find((t) => t.taskId === inst.taskId);
-              if (!task) return null;
-
-              return (
-                <SortableItem
-                  key={instanceId}
-                  id={instanceId}
-                  type="taskbox-item"
-                  instanceId={instanceId}
-                  taskId={inst.taskId}
-                  label={task.label}
-                  panelId={panelId}       // <—— FIXED
-                />
-              );
-            })}
-          </SortableContext>
-        </div>
-
-        {/* Bottom drop zone */}
-        <div
-          ref={setBottomZoneRef}
-          style={{
-            height: 40,
-            marginTop: 4,
-            borderRadius: 6,
-          }}
-        />
-      </div>
     </div>
   );
 }

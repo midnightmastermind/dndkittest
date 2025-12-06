@@ -143,7 +143,7 @@ export default function Grid({
     if (data?.role === "panel") {
       setPanelDragging(true);
     }
-    if (data?.type === "taskbox-item" || data?.type === "schedule-item") {
+    if (data?.role !== "panel") {
       handleDragStartProp(event);
       return;
     }
@@ -154,7 +154,7 @@ export default function Grid({
   ------------------------------------------------------------ */
   const handleDragMove = (event) => {
     const data = event.active.data.current;
-    if (data?.type === "taskbox-item" || data?.type === "schedule-item") {
+    if (data?.role !== "panel") {
       handleDragOverProp(event);
       return;
     }
@@ -173,7 +173,7 @@ export default function Grid({
 
     const data = active.data.current;
 
-    if (data?.type === "taskbox-item" || data?.type === "schedule-item") {
+    if (data?.role !== "panel") {
       handleDragEndProp(event);
       return;
     }

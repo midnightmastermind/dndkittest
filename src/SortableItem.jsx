@@ -1,53 +1,49 @@
-// SortableItem.jsx — unified instance-based draggable
-import React from "react";
+// SortableItem.jsx — FINAL MERGED VERSION
+import React, { useContext } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { ScheduleContext } from "./ScheduleContext";
 
-import TaskItem from "./TaskItem";
+export default function SortableItem({ instanceId, containerId }) {
+    const { instanceStoreRef } = useContext(ScheduleContext);
 
-export default function SortableItem({
-  id,                 // always instanceId
-  instanceId,
-  taskId,
-  label,
-  type,               // <-- ADDED
-  panelId = null,
-  fromSlotId = null,
-}) {
-  const {
-    setNodeRef,
-    attributes,
-    listeners,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id, 
-    data: {
-      role: "task",
-      type,           // <-- CRITICAL
-      instanceId,
-      taskId,
-      panelId: panelId,    // previously panelId was undefined
-      slotId: fromSlotId,      // previously slotId was missing
-    },
-  });
+    const inst = instanceStoreRef.current[instanceId] || {};
+    const label = inst.label ?? "Untitled";
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  };
+    const {
+        setNodeRef,
+        attributes,
+        listeners,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({
+        id: instanceId,
+        data: {
+            type: "task",
+            instanceId,
+            containerId
+        }
+    });
 
-  return (
-    <TaskItem
-      ref={setNodeRef}
-      sortableAttributes={attributes}
-      sortableListeners={listeners}
-      sortableStyle={style}
-      instanceId={instanceId}
-      taskId={taskId}
-      label={label}
-    />
-  );
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        background: "#2F343A",
+        border: "1px solid #444",
+        borderRadius: 6,
+        padding: "8px 10px",
+        marginBottom: 6,
+        color: "white",
+        cursor: "grab",
+        userSelect: "none",
+        fontSize: 14
+    };
+
+    return (
+        <div ref={setNodeRef} {...attributes} {...listeners} style={style}>
+            {label}
+        </div>
+    );
 }

@@ -241,7 +241,7 @@ export default function Panel({
         {/* CONTENT */}
         <div
           style={{
-            padding: 10,
+            margin: 10,
             color: "white",
             height: "100%",
             overflow: "hidden",

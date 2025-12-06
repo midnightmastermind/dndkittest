@@ -1,62 +1,90 @@
-// Schedule.jsx
-import React, { useLayoutEffect, useRef, useContext } from "react";
+// Schedule.jsx — updated for containerState
+import React, { useContext } from "react";
 import { ScheduleContext } from "./ScheduleContext";
-import TimeSlot from "./TimeSlot";
+import {
+  SortableContext,
+  verticalListSortingStrategy
+} from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
+import SortableItem from "./SortableItem";
 
-const TIME_SLOTS = (() => {
-  const slots = [];
-  const fmt = (h, m) => {
-    const suffix = h < 12 ? "AM" : "PM";
-    const hr = h % 12 === 0 ? 12 : h % 12;
-    return `${hr}:${m.toString().padStart(2, "0")} ${suffix}`;
-  };
-
+function generateSlots() {
+  const out = [];
   for (let h = 0; h < 24; h++) {
     for (let m of [0, 30]) {
-      const id = `${String(h).padStart(2, "0")}:${String(m)
-        .toString()
-        .padStart(2, "0")}`;
-      slots.push({ id, label: fmt(h, m) });
+      const hh = h.toString().padStart(2, "0");
+      const mm = m.toString().padStart(2, "0");
+      out.push({ id: `${hh}:${mm}`, label: `${hh}:${mm}` });
     }
   }
-  return slots;
-})();
+  return out;
+}
 
-export default React.memo(function Schedule({ panelId, gridActive }) {
-  const containerRef = useRef(null);
+const SLOT_DEFINITION = generateSlots();
 
-  const { scheduleState, instanceStoreRef } = useContext(ScheduleContext);
-  const instanceStore = instanceStoreRef.current;
-
-  if (!scheduleState[panelId]) scheduleState[panelId] = {};
-  const panelSlots = scheduleState[panelId];
+export default function Schedule({ panel }) {
+  const { containerState } = useContext(ScheduleContext);
 
   return (
     <div
-      ref={containerRef}
       style={{
+        width: "100%",
         height: "100%",
-        borderRadius: 8,
-        border: "1px dashed #aaa",
-        background: "rgba(255,255,255,0.06)",
-        overflowY: gridActive ? "hidden" : "auto",
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6
       }}
     >
-      {TIME_SLOTS.map(slot => {
-        // scheduleState stores only instanceIds
-        const instanceIds = panelSlots[slot.id] || [];
-
-        return (
-          <TimeSlot
-            key={slot.id}
-            slot={slot}
-            panelId={panelId}
-            instanceIds={instanceIds}
-            instanceStore={instanceStore}
-            disableDrop={gridActive}
-          />
-        );
-      })}
+      {SLOT_DEFINITION.map((slot) => (
+        <Slot
+          key={slot.id}
+          slotId={slot.id}
+          label={slot.label}
+          instanceIds={containerState[slot.id] || []}
+        />
+      ))}
     </div>
   );
-});
+}
+
+function Slot({ slotId, label, instanceIds }) {
+  const { setNodeRef } = useDroppable({
+    id: slotId,
+    data: {
+      type: "slot",
+      containerId: slotId
+    }
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-slot={slotId}
+      style={{
+        background: "#2D333B",
+        border: "1px solid #444",
+        padding: 6,
+        borderRadius: 6
+      }}
+    >
+      <div style={{ color: "#9AA0A6", fontSize: 12, marginBottom: 4 }}>
+        {label}
+      </div>
+
+      <SortableContext
+        id={slotId}
+        items={instanceIds}
+        strategy={verticalListSortingStrategy}
+        data={{
+          role: "task-container",
+          containerId: slotId
+        }}
+      >
+        {instanceIds.map((id) => (
+          <SortableItem key={id} instanceId={id} containerId={slotId}/>
+        ))}
+      </SortableContext>
+    </div>
+  );
+}
