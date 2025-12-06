@@ -12,11 +12,12 @@ export default function Panel({
   cols,
   rows,
   activeId,
-  gridActive
+  gridActive,
+  fullscreenPanelId,
+  setFullscreenPanelId
 }) {
   const panelRef = useRef(null);
   const [isResizing, setIsResizing] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
   const prev = useRef(null);
 
   // -------------------------------
@@ -52,7 +53,7 @@ export default function Panel({
   // FULLSCREEN
   // -------------------------------
   const toggleFullscreen = () => {
-    if (!fullscreen) {
+    if (fullscreenPanelId === null && panel.id !== fullscreenPanelId) {
       prev.current = { ...panel };
       setPanels((list) =>
         list.map((p) =>
@@ -61,14 +62,16 @@ export default function Panel({
             : p
         )
       );
+      setFullscreenPanelId(panel.id);
     } else {
       setPanels((list) =>
         list.map((p) =>
           p.id === panel.id ? { ...p, ...prev.current } : p
         )
       );
+      setFullscreenPanelId(null); // 🔥 clear fullscreen
+
     }
-    setFullscreen((v) => !v);
   };
 
   // -------------------------------
@@ -132,10 +135,10 @@ export default function Panel({
         list.map((p) =>
           p.id === panel.id
             ? {
-                ...p,
-                width: Math.min(width, cols - panel.col),
-                height: Math.min(height, rows - panel.row),
-              }
+              ...p,
+              width: Math.min(width, cols - panel.col),
+              height: Math.min(height, rows - panel.row),
+            }
             : p
         )
       );
@@ -161,6 +164,8 @@ export default function Panel({
                     ${panel.row + panel.height + 1} /
                     ${panel.col + panel.width + 1}`;
 
+  const isFullscreen = fullscreenPanelId !== null && panel.id === fullscreenPanelId;
+
   return (
     <div
       ref={(el) => {
@@ -176,17 +181,17 @@ export default function Panel({
         overflow: "hidden",
         position: "relative",
         margin: "1px",
-        zIndex: fullscreen ? 50 : 5,
-        pointerEvents: isDragging ? "none" : "auto",
+        zIndex: isFullscreen ? 60 : 50,
+        pointerEvents: fullscreenPanelId !== null && panel.id !== fullscreenPanelId ? "none" : "auto",
       }}
     >
       {/* PANEL FRAME */}
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-        
+
         {/* HEADER */}
         <div
           style={{
-            background: "#DDE2EB",
+            background: "#2F343A",
             borderTopLeftRadius: 8,
             borderTopRightRadius: 8,
             display: "flex",
@@ -194,33 +199,47 @@ export default function Panel({
             alignItems: "center",
             fontWeight: 600,
             position: "relative",
-            zIndex: fullscreen ? 3 : 1,
+            zIndex: isFullscreen ? 3 : 1,
+            color: "white"
           }}
         >
           <div style={{ paddingLeft: 6 }}>{panel.label || "Panel"}</div>
+          <div className="input" style={{ display: "flex", alignItems: "center" }}>
+            <select
+              value={panel.type}
+              onChange={(e) => {
+                const newType = e.target.value;
+                setPanels((list) =>
+                  list.map((p) => {
+                    if (p.id !== panel.id) return p;
 
-          <select
-            value={panel.type}
-            onChange={(e) => {
-              const type = e.target.value;
-              setPanels((list) =>
-                list.map((p) =>
-                  p.id === panel.id ? { ...p, type } : p
-                )
-              );
-            }}
-          >
-            {Object.keys(components).map((key) => (
-              <option key={key} value={key}>
-                {key}
-              </option>
-            ))}
-          </select>
+                    // 🔥 Generate the right containerId depending on type
+                    const newProps =
+                      newType === "taskbox"
+                        ? { containerId: `taskbox-${p.id}` }
+                        : { containerId: `schedule-${p.id}` };
 
-          <Button spacing="compact" onClick={toggleFullscreen}>
-            {fullscreen ? "Restore" : "Fullscreen"}
-          </Button>
+                    return {
+                      ...p,
+                      type: newType,
+                      props: newProps,   // 🔥 Replace props!
+                    };
+                  })
+                );
+              }}
+            >
+              {Object.keys(components).map((key) => (
+                <option key={key} value={key}>
+                  {key}
+                </option>
+              ))}
+            </select>
 
+
+            <Button spacing="compact" onClick={toggleFullscreen}>
+              {isFullscreen ? "Restore" : "Fullscreen"}
+            </Button>
+          </div>
           {/* DRAG HANDLE */}
           <div
             {...dragListeners}
@@ -244,14 +263,14 @@ export default function Panel({
             margin: 10,
             color: "white",
             height: "100%",
-            overflow: "hidden",
+            overflow: "hidden"
           }}
         >
           {RenderedComponent && (
             <RenderedComponent
               {...panel.props}
               panelId={panel.id}
-              gridActive={gridActive}
+              disabled={fullscreenPanelId !== null && panel.id !== fullscreenPanelId}
             />
           )}
         </div>

@@ -34,3 +34,12 @@ html, body {
 .dnd-kit-dragging {
   contain: layout paint size style;
 }
+
+.input>div {
+  background-color: #2F343A !important;
+  color: white !important;
+}
+
+.input>button {
+  color: white;
+}

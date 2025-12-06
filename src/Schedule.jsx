@@ -1,4 +1,4 @@
-// Schedule.jsx — updated for containerState
+// Schedule.jsx — multiple independent schedules
 import React, { useContext } from "react";
 import { ScheduleContext } from "./ScheduleContext";
 import {
@@ -8,22 +8,26 @@ import {
 import { useDroppable } from "@dnd-kit/core";
 import SortableItem from "./SortableItem";
 
-function generateSlots() {
+function generateSlots(containerId) {
   const out = [];
   for (let h = 0; h < 24; h++) {
     for (let m of [0, 30]) {
-      const hh = h.toString().padStart(2, "0");
-      const mm = m.toString().padStart(2, "0");
-      out.push({ id: `${hh}:${mm}`, label: `${hh}:${mm}` });
+      const HH = h.toString().padStart(2, "0");
+      const MM = m.toString().padStart(2, "0");
+
+      out.push({
+        id: `${containerId}-${HH}:${MM}`, // 🔥 containerId already starts with schedule-<panelId>
+        label: `${HH}:${MM}`
+      });
     }
   }
   return out;
 }
 
-const SLOT_DEFINITION = generateSlots();
-
-export default function Schedule({ panel }) {
+export default function Schedule({ containerId, disabled }) {
   const { containerState } = useContext(ScheduleContext);
+
+  const slots = generateSlots(containerId);    // 🔥 unique slot IDs per panel
 
   return (
     <div
@@ -36,11 +40,12 @@ export default function Schedule({ panel }) {
         gap: 6
       }}
     >
-      {SLOT_DEFINITION.map((slot) => (
+      {slots.map((slot) => (
         <Slot
           key={slot.id}
           slotId={slot.id}
           label={slot.label}
+          disabled={disabled}
           instanceIds={containerState[slot.id] || []}
         />
       ))}
@@ -48,24 +53,27 @@ export default function Schedule({ panel }) {
   );
 }
 
-function Slot({ slotId, label, instanceIds }) {
+function Slot({ slotId, label, instanceIds, disabled }) {
   const { setNodeRef } = useDroppable({
     id: slotId,
     data: {
       type: "slot",
-      containerId: slotId
-    }
+      containerId: slotId,
+    },
+    disabled
   });
 
   return (
     <div
       ref={setNodeRef}
-      data-slot={slotId}
+      className="taskbox"
+      data-role="taskbox"
+       data-containerid={slotId}
       style={{
         background: "#2D333B",
         border: "1px solid #444",
         padding: 6,
-        borderRadius: 6
+        borderRadius: 6,
       }}
     >
       <div style={{ color: "#9AA0A6", fontSize: 12, marginBottom: 4 }}>
@@ -76,13 +84,14 @@ function Slot({ slotId, label, instanceIds }) {
         id={slotId}
         items={instanceIds}
         strategy={verticalListSortingStrategy}
+        disabled={disabled}
         data={{
           role: "task-container",
           containerId: slotId
         }}
       >
         {instanceIds.map((id) => (
-          <SortableItem key={id} instanceId={id} containerId={slotId}/>
+          <SortableItem key={id} instanceId={id} containerId={slotId} />
         ))}
       </SortableContext>
     </div>

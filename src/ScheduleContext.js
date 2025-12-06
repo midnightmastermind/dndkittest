@@ -2,19 +2,23 @@
 import { createContext } from "react";
 
 export const ScheduleContext = createContext({
-  panels: [],
-  setPanels: () => {},
+    panels: [],
+    setPanels: () => { },
 
-  // Master instance store (NOT reactive)
-  instanceStoreRef: { current: {} },
+    // Master instance store (NOT reactive)
+    instanceStoreRef: { current: {} },
 
-  // Reactive container → instanceIds state
-  // Example:
-  // {
-  //    "taskbox-123": ["inst1", "inst2"],
-  //    "08:00": ["inst3"]
-  // }
-  containerState: {},
+    // Reactive container → instanceIds state
+    // Example:
+    // {
+    //    "taskbox-123": ["inst1", "inst2"],
+    //    "08:00": ["inst3"]
+    // }
+    containerState: {},
 
-  setContainerState: () => {}
+    setContainerState: () => { },
+
+    editItem: () => { },
+    deleteItem: () => { },
+    anyDragging: false
 });

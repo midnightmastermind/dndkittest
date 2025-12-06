@@ -10,6 +10,7 @@ import SortableItem from "./SortableItem";
 import { ScheduleContext } from "./ScheduleContext";
 
 import "./index.css";
+
 export default function App() {
 
   // --------------------------------------------
@@ -31,6 +32,7 @@ export default function App() {
   // --------------------------------------------
   const [containerState, setContainerState] = useState({});
   // containerId: [instanceIds...]
+ const [anyDragging, setAnyDragging] = useState(false);
 
   // --------------------------------------------
   // SEED INITIAL TASKBOX PANEL (only once)
@@ -42,43 +44,43 @@ export default function App() {
   ];
 
   useEffect(() => {
-  if (panels.length > 0) return;
+    if (panels.length > 0) return;
 
-  const panelId = crypto.randomUUID();
-  const containerId = `taskbox-${panelId}`;
+    const panelId = crypto.randomUUID();
+    const containerId = `taskbox-${panelId}`;
 
-  const instIds = [];
+    const instIds = [];
 
-  starterTasks.forEach(t => {
-    const instId = crypto.randomUUID();
-    instanceStoreRef.current[instId] = {
-      taskId: t.taskId,
-      label: t.label,
-      instanceId: instId
-    };
-    instIds.push(instId);
-  });
+    starterTasks.forEach(t => {
+      const instId = crypto.randomUUID();
+      instanceStoreRef.current[instId] = {
+        taskId: t.taskId,
+        label: t.label,
+        instanceId: instId
+      };
+      instIds.push(instId);
+    });
 
-  // initialize containers
-  setContainerState(prev => ({
-    ...prev,
-    [containerId]: instIds
-  }));
+    // initialize containers
+    setContainerState(prev => ({
+      ...prev,
+      [containerId]: instIds
+    }));
 
-  // initialize panels
-  setPanels([
-    {
-      id: panelId,
-      type: "taskbox",
-      row: 0,
-      col: 0,
-      width: 1,
-      height: 1,
-      props: { containerId }
-    }
-  ]);
+    // initialize panels
+    setPanels([
+      {
+        id: panelId,
+        type: "taskbox",
+        row: 0,
+        col: 0,
+        width: 1,
+        height: 1,
+        props: { containerId }
+      }
+    ]);
 
-}, []);  // run once
+  }, []);  // run once
 
   // --------------------------------------------
   // FIND NEXT GRID SPOT
@@ -143,146 +145,200 @@ export default function App() {
   // --------------------------------------------
   // DRAG STATE (active item)
   // --------------------------------------------
-  const activeRef = useRef(null); 
+  const activeRef = useRef(null);
   // { instanceId, fromContainerId }
 
   // --------------------------------------------
   // ON DRAG START
   // --------------------------------------------
   const handleDragStart = ({ active }) => {
+    setAnyDragging(true);   // 🔥 notify all components
     const data = active.data.current || {};
     activeRef.current = {
       instanceId: data.instanceId,
       fromContainerId: data.containerId
     };
-    console.log(activeRef.current);
   };
 
   // --------------------------------------------
   // ON DRAG OVER — shadow move (live preview)
   // --------------------------------------------
+// --------------------------------------------
+// ON DRAG OVER — shadow move (live preview)
+// --------------------------------------------
 const handleDragOver = ({ active, over }) => {
   if (!active || !over) return;
 
-  console.log("🔵 DRAG OVER ----------------------");
-  console.log("active:", active);
-  console.log("over:", over);
-
   const info = activeRef.current;
-  if (!info) {
-    console.log("❌ activeRef missing");
-    return;
-  }
+  if (!info) return;
 
-  const overData = over.data.current;
-  console.log("overData:", overData);
-
-  if (!overData?.containerId) {
-    console.log("❌ no containerId on over");
-    return;
-  }
-
-  const from = info.fromContainerId;
-  const to = overData.containerId;
   const instId = info.instanceId;
+  const from = info.fromContainerId;
 
-  console.log(`from=${from} → to=${to} inst=${instId}`);
+  const overData = over.data.current || {};
+  const to = overData.containerId;
+  if (!to) return;
 
-  if (!from || !to || from === to) {
-    console.log("⚠ no movement (same container)");
-    return;
-  }
+  console.log("🔵 DRAG OVER ----------------------");
+  console.log("from:", from, "to:", to, "inst:", instId);
+  console.log("over.id:", over.id, "overData:", overData);
+
+  // ---------------------------------------------------------
+  // 🔥 1) APPEND TO BOTTOM WHEN HOVERING TASKBOX ROOT
+  //
+  // This happens when:
+  // - You are NOT over a specific SortableItem
+  // - You ARE over the TaskBox container
+  // ---------------------------------------------------------
+  const hoveringEmptyArea =
+    over.id === to && !overData.instanceId; // no specific item under cursor
+
+// ---------------------------------------------------------
+// 🔥 APPEND TO BOTTOM WHEN HOVERING EMPTY SPACE
+// Works for:
+// - moving between containers
+// - moving INSIDE the same container
+// ---------------------------------------------------------
+if (hoveringEmptyArea) {
+  console.log("📌 APPEND TO BOTTOM of:", to);
 
   setContainerState(prev => {
     const fromArr = prev[from] || [];
     const toArr = prev[to] || [];
 
-    console.log("fromArr:", fromArr);
-    console.log("toArr:", toArr);
-
-    if (toArr.includes(instId)) {
-      console.log("⚠ already inserted, skipping");
-      return prev;
-    }
-
-    const newFrom = fromArr.filter(id => id !== instId);
-    const newTo = [...toArr, instId];
-
-    console.log("➡ newFrom:", newFrom);
-    console.log("➡ newTo:", newTo);
+    // If already at bottom, skip
+    if (toArr[toArr.length - 1] === instId) return prev;
 
     return {
       ...prev,
-      [from]: newFrom,
-      [to]: newTo
+
+      // 🔥 Remove from original container
+      [from]: fromArr.filter(id => id !== instId),
+
+      // 🔥 Append at bottom of new container
+      [to]: [...toArr.filter(id => id !== instId), instId]
     };
   });
 
   activeRef.current.fromContainerId = to;
+  return;
+}
 
-  console.log("activeRef updated:", activeRef.current);
+
+  // ---------------------------------------------------------
+  // 🔥 2) NORMAL CROSS-CONTAINER MOVE
+  // ---------------------------------------------------------
+  if (from !== to) {
+    setContainerState(prev => {
+      const fromArr = prev[from] || [];
+      const toArr = prev[to] || [];
+
+      if (toArr.includes(instId)) return prev;
+
+      return {
+        ...prev,
+        [from]: fromArr.filter(id => id !== instId),
+        [to]: [...toArr, instId]
+      };
+    });
+
+    activeRef.current.fromContainerId = to;
+    return;
+  }
+
+  // ---------------------------------------------------------
+  // 🔥 3) Same-container reorder is handled in dragEnd
+  // ---------------------------------------------------------
 };
 
   // --------------------------------------------
   // ON DRAG END — commit reorder
   // --------------------------------------------
-const handleDragEnd = ({ active, over }) => {
-  console.log("🟢 DRAG END -------------------");
-  console.log("active:", active);
-  console.log("over:", over);
+  const handleDragEnd = ({ active, over }) => {
+    console.log("🟢 DRAG END -------------------");
+    console.log("active:", active);
+    console.log("over:", over);
+    setAnyDragging(false);
+    const info = activeRef.current;
+    activeRef.current = null;
 
-  const info = activeRef.current;
-  activeRef.current = null;
-
-  if (!active || !over) {
-    console.log("❌ missing active/over");
-    return;
-  }
-
-  const overData = over.data.current || {};
-  const toContainer = overData.containerId;
-  const instId = active.data.current.instanceId;
-
-  console.log("toContainer:", toContainer);
-  console.log("instId:", instId);
-  console.log("overData:", overData);
-
-  if (!toContainer) {
-    console.log("❌ no containerId on over");
-    return;
-  }
-
-  setContainerState(prev => {
-    const arr = prev[toContainer];
-    console.log("arr before reorder:", arr);
-
-    if (!arr) {
-      console.log("❌ arr missing");
-      return prev;
+    if (!active || !over) {
+      console.log("❌ missing active/over");
+      return;
     }
 
-    if (overData.instanceId && overData.instanceId !== instId) {
-      const target = overData.instanceId;
-      const oldIndex = arr.indexOf(instId);
-      const newIndex = arr.indexOf(target);
+    const overData = over.data.current || {};
+    const toContainer = overData.containerId;
+    const instId = active.data.current.instanceId;
 
-      console.log("oldIndex:", oldIndex, "newIndex:", newIndex);
+    console.log("toContainer:", toContainer);
+    console.log("instId:", instId);
+    console.log("overData:", overData);
 
-      if (oldIndex !== -1 && newIndex !== -1) {
-        const reordered = [...arr];
-        reordered.splice(oldIndex, 1);
-        reordered.splice(newIndex, 0, instId);
+    if (!toContainer) {
+      console.log("❌ no containerId on over");
+      return;
+    }
 
-        console.log("arr after reorder:", reordered);
+    setContainerState(prev => {
+      const arr = prev[toContainer];
+      console.log("arr before reorder:", arr);
 
-        return { ...prev, [toContainer]: reordered };
+      if (!arr) {
+        console.log("❌ arr missing");
+        return prev;
       }
-    }
 
-    console.log("⚠ no reorder happened");
-    return prev;
-  });
-};
+      if (overData.instanceId && overData.instanceId !== instId) {
+        const target = overData.instanceId;
+        const oldIndex = arr.indexOf(instId);
+        const newIndex = arr.indexOf(target);
+
+        console.log("oldIndex:", oldIndex, "newIndex:", newIndex);
+
+        if (oldIndex !== -1 && newIndex !== -1) {
+          const reordered = [...arr];
+          reordered.splice(oldIndex, 1);
+          reordered.splice(newIndex, 0, instId);
+
+          console.log("arr after reorder:", reordered);
+
+          return { ...prev, [toContainer]: reordered };
+        }
+      }
+
+      console.log("⚠ no reorder happened");
+      return prev;
+    });
+  };
+  // --------------------------------------------
+  // EDIT ITEM — update instanceStoreRef safely
+  // --------------------------------------------
+  const editItem = (instanceId, newLabel) => {
+    instanceStoreRef.current = {
+      ...instanceStoreRef.current,
+      [instanceId]: {
+        ...instanceStoreRef.current[instanceId],
+        label: newLabel
+      }
+    };
+  };
+
+  const deleteItem = (instanceId) => {
+    // 1. Remove instance from instanceStore
+    const copy = { ...instanceStoreRef.current };
+    delete copy[instanceId];
+    instanceStoreRef.current = copy;
+
+    // 2. Remove instance from all containers
+    setContainerState(prev => {
+      const next = {};
+      for (const [cid, arr] of Object.entries(prev)) {
+        next[cid] = arr.filter(id => id !== instanceId);
+      }
+      return next;
+    });
+  };
 
   // --------------------------------------------
   // DRAG OVERLAY (optional)
@@ -320,9 +376,12 @@ const handleDragEnd = ({ active, over }) => {
       setPanels,
       instanceStoreRef,
       containerState,
-      setContainerState
+      setContainerState,
+      editItem,
+      deleteItem,
+      anyDragging
     }}>
-      <div style={{ background: "#1D2125", height: "100vh", overflow: "hidden" }}>
+      <div data-color-mode="dark" style={{ background: "#1D2125", height: "100vh", overflow: "hidden" }}>
 
         {/* Toolbar */}
         <div

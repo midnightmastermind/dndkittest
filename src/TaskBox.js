@@ -1,15 +1,28 @@
-// TaskBox.jsx — now includes “Add Task” button
+// TaskBox.jsx — now includes “Add Task” button + droppable fix
 
 import React, { useContext } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";         // ✅ ADD THIS
 import { ScheduleContext } from "./ScheduleContext";
 import SortableItem from "./SortableItem";
 
-export default function TaskBox({ panelId, containerId }) {
+export default function TaskBox({ panelId, containerId, disabled }) {
   const { containerState, setContainerState, instanceStoreRef } =
     useContext(ScheduleContext);
 
   const instanceIds = containerState[containerId] || [];
+
+  // ----------------------------------------------------
+  // MAKE TASKBOX DROPPABLE (fix for empty drop issue)
+  // ----------------------------------------------------
+  const { setNodeRef } = useDroppable({
+    id: containerId,
+    data: {
+      role: "task-container",
+      containerId
+    },
+    disabled
+  });
 
   // ----------------------------------------------------
   // ADD NEW TASK TO THIS TASKBOX
@@ -34,6 +47,7 @@ export default function TaskBox({ panelId, containerId }) {
 
   return (
     <div
+      ref={setNodeRef}                           // ✅ THIS MAKES IT DROPPABLE
       className="taskbox"
       data-role="taskbox"
       data-containerid={containerId}
@@ -50,6 +64,7 @@ export default function TaskBox({ panelId, containerId }) {
         id={containerId}
         items={instanceIds}
         strategy={verticalListSortingStrategy}
+        disabled={disabled}
         data={{
           role: "task-container",
           containerId
