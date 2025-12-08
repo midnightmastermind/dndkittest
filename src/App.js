@@ -10,6 +10,33 @@ import SortableItem from "./SortableItem";
 import { ScheduleContext } from "./ScheduleContext";
 
 import "./index.css";
+function buildInstanceTree(dataArray, instanceStore) {
+  const rootIds = [];
+
+  for (const item of dataArray) {
+    const instId = crypto.randomUUID();
+
+    // Insert the instance (children to be filled next)
+    instanceStore[instId] = {
+      instanceId: instId,
+      taskId: crypto.randomUUID(),
+      label: item.label ?? "Untitled",
+      childrenSortable: item.childrenSortable ?? false,
+      children: []
+    };
+
+    // Track top-level instance
+    rootIds.push(instId);
+
+    // If children exist, recursively build
+    if (item.children && item.children.length > 0) {
+      const childIds = buildInstanceTree(item.children, instanceStore);
+      instanceStore[instId].children = childIds;
+    }
+  }
+
+  return rootIds;
+}
 
 export default function App() {
 
@@ -37,50 +64,75 @@ export default function App() {
   // --------------------------------------------
   // SEED INITIAL TASKBOX PANEL (only once)
   // --------------------------------------------
-  const starterTasks = [
-    { taskId: crypto.randomUUID(), label: "Item 1" },
-    { taskId: crypto.randomUUID(), label: "Item 2" },
-    { taskId: crypto.randomUUID(), label: "Item 3" }
-  ];
+// ⭐ A clean starter dataset
+const starterData = [
+  {
+    label: "Item 1",
+    childrenSortable: true,
+    children: [
+      { label: "Subtask A" },
+      { label: "Subtask B" }
+    ]
+  },
+  {
+    label: "Item 2",
+    childrenSortable: true,
+    children: []
+  },
+  {
+    label: "Item 3",
+    childrenSortable: false
+  }
+];
 
-  useEffect(() => {
-    if (panels.length > 0) return;
+useEffect(() => {
+  if (panels.length > 0) return;
 
-    const panelId = crypto.randomUUID();
-    const containerId = `taskbox-${panelId}`;
+  const panelId = crypto.randomUUID();
+  const containerId = `taskbox-${panelId}`;
 
-    const instIds = [];
+  // ⭐ Build full tree from starterData
+  const rootInstanceIds = buildInstanceTree(
+    starterData,
+    instanceStoreRef.current
+  );
 
-    starterTasks.forEach(t => {
-      const instId = crypto.randomUUID();
-      instanceStoreRef.current[instId] = {
-        taskId: t.taskId,
-        label: t.label,
-        instanceId: instId
-      };
-      instIds.push(instId);
-    });
+  // Attach top-level items to the container
+  setContainerState(prev => ({
+    ...prev,
+    [containerId]: rootInstanceIds
+  }));
 
-    // initialize containers
-    setContainerState(prev => ({
-      ...prev,
-      [containerId]: instIds
-    }));
+  // Add panel
+  setPanels([
+    {
+      id: panelId,
+      type: "taskbox",
+      row: 0,
+      col: 0,
+      width: 1,
+      height: 1,
+      props: { containerId }
+    }
+  ]);
+}, []);
+  // run once
+// Remove instId from ALL locations: root containers + parent.children arrays
+const detachEverywhere = (instId) => {
+  // Remove from root containerState
+  setContainerState(prev => {
+    const next = {};
+    for (const [cid, arr] of Object.entries(prev)) {
+      next[cid] = arr.filter(id => id !== instId);
+    }
+    return next;
+  });
 
-    // initialize panels
-    setPanels([
-      {
-        id: panelId,
-        type: "taskbox",
-        row: 0,
-        col: 0,
-        width: 1,
-        height: 1,
-        props: { containerId }
-      }
-    ]);
-
-  }, []);  // run once
+  // Remove from ALL nested child arrays
+  Object.values(instanceStoreRef.current).forEach(inst => {
+    inst.children = inst.children?.filter(id => id !== instId);
+  });
+};
 
   // --------------------------------------------
   // FIND NEXT GRID SPOT
@@ -160,13 +212,7 @@ export default function App() {
     };
   };
 
-  // --------------------------------------------
-  // ON DRAG OVER — shadow move (live preview)
-  // --------------------------------------------
-// --------------------------------------------
-// ON DRAG OVER — shadow move (live preview)
-// --------------------------------------------
-const handleDragOver = ({ active, over }) => {
+ const handleDragOver = ({ active, over }) => {
   if (!active || !over) return;
 
   const info = activeRef.current;
@@ -179,138 +225,144 @@ const handleDragOver = ({ active, over }) => {
   const to = overData.containerId;
   if (!to) return;
 
-  console.log("🔵 DRAG OVER ----------------------");
-  console.log("from:", from, "to:", to, "inst:", instId);
-  console.log("over.id:", over.id, "overData:", overData);
+  const isNested = to.startsWith("children-");
+  const parentId = isNested ? to.replace("children-", "") : null;
 
-  // ---------------------------------------------------------
-  // 🔥 1) APPEND TO BOTTOM WHEN HOVERING TASKBOX ROOT
-  //
-  // This happens when:
-  // - You are NOT over a specific SortableItem
-  // - You ARE over the TaskBox container
-  // ---------------------------------------------------------
-  const hoveringEmptyArea =
-    over.id === to && !overData.instanceId; // no specific item under cursor
+  // ----------------------------------------
+  // ⭐ NEW: bottom-droppable slot
+  // ----------------------------------------
+  if (over.id?.startsWith("bottom-")) {
+    const parentId = to.replace("children-", "");
+    detachEverywhere(instId);
 
-// ---------------------------------------------------------
-// 🔥 APPEND TO BOTTOM WHEN HOVERING EMPTY SPACE
-// Works for:
-// - moving between containers
-// - moving INSIDE the same container
-// ---------------------------------------------------------
-if (hoveringEmptyArea) {
-  console.log("📌 APPEND TO BOTTOM of:", to);
-
-  setContainerState(prev => {
-    const fromArr = prev[from] || [];
-    const toArr = prev[to] || [];
-
-    // If already at bottom, skip
-    if (toArr[toArr.length - 1] === instId) return prev;
-
-    return {
-      ...prev,
-
-      // 🔥 Remove from original container
-      [from]: fromArr.filter(id => id !== instId),
-
-      // 🔥 Append at bottom of new container
-      [to]: [...toArr.filter(id => id !== instId), instId]
-    };
-  });
-
-  activeRef.current.fromContainerId = to;
-  return;
-}
-
-
-  // ---------------------------------------------------------
-  // 🔥 2) NORMAL CROSS-CONTAINER MOVE
-  // ---------------------------------------------------------
-  if (from !== to) {
-    setContainerState(prev => {
-      const fromArr = prev[from] || [];
-      const toArr = prev[to] || [];
-
-      if (toArr.includes(instId)) return prev;
-
-      return {
-        ...prev,
-        [from]: fromArr.filter(id => id !== instId),
-        [to]: [...toArr, instId]
-      };
-    });
+    instanceStoreRef.current[parentId].children.push(instId);
 
     activeRef.current.fromContainerId = to;
     return;
   }
 
-  // ---------------------------------------------------------
-  // 🔥 3) Same-container reorder is handled in dragEnd
-  // ---------------------------------------------------------
+  // skip nested-container group header
+  if (overData.role === "nested-container") return;
+
+  const hoveringEmptyArea =
+    over.id === to && !overData.instanceId;
+
+  // ----------------------------------------
+  // EMPTY DROP ZONE
+  // ----------------------------------------
+  if (hoveringEmptyArea) {
+    detachEverywhere(instId);
+
+    setContainerState(prev => ({
+      ...prev,
+      [to]: [...(prev[to] || []), instId]
+    }));
+
+    activeRef.current.fromContainerId = to;
+
+    if (isNested) {
+      instanceStoreRef.current[parentId].children.push(instId);
+    }
+
+    return;
+  }
+
+  // ----------------------------------------
+  // CROSS-CONTAINER MOVE
+  // ----------------------------------------
+  if (from !== to) {
+    detachEverywhere(instId);
+
+    setContainerState(prev => ({
+      ...prev,
+      [to]: [...(prev[to] || []), instId]
+    }));
+
+    activeRef.current.fromContainerId = to;
+
+    if (isNested) {
+      instanceStoreRef.current[parentId].children.push(instId);
+    }
+
+    return;
+  }
+
+  // same-container sorting happens at dragEnd
 };
 
-  // --------------------------------------------
-  // ON DRAG END — commit reorder
-  // --------------------------------------------
-  const handleDragEnd = ({ active, over }) => {
-    console.log("🟢 DRAG END -------------------");
-    console.log("active:", active);
-    console.log("over:", over);
-    setAnyDragging(false);
-    const info = activeRef.current;
-    activeRef.current = null;
 
-    if (!active || !over) {
-      console.log("❌ missing active/over");
-      return;
+
+const handleDragEnd = ({ active, over }) => {
+  setAnyDragging(false);
+
+  const info = activeRef.current;
+  activeRef.current = null;
+
+  if (!active || !over || !info) return;
+
+  const instId = active.data.current.instanceId;
+  const overData = over.data.current || {};
+  const toContainer = overData.containerId;
+  if (!toContainer) return;
+
+  // ------------------------------------
+  // ⭐ Nested bottom-slot → push to end
+  // ------------------------------------
+  if (over.id?.startsWith("bottom-")) {
+    const parentId = toContainer.replace("children-", "");
+    const arr = instanceStoreRef.current[parentId].children;
+
+    const oldIdx = arr.indexOf(instId);
+    if (oldIdx !== -1) arr.splice(oldIdx, 1);
+    arr.push(instId);
+
+    return;
+  }
+
+  // ------------------------------------
+  // ROOT SORTING
+  // ------------------------------------
+  setContainerState(prev => {
+    const arr = prev[toContainer];
+    if (!arr) return prev;
+
+    if (overData.instanceId && overData.instanceId !== instId) {
+      const target = overData.instanceId;
+
+      const oldIndex = arr.indexOf(instId);
+      const newIndex = arr.indexOf(target);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const reordered = [...arr];
+        reordered.splice(oldIndex, 1);
+        reordered.splice(newIndex, 0, instId);
+        return { ...prev, [toContainer]: reordered };
+      }
     }
 
-    const overData = over.data.current || {};
-    const toContainer = overData.containerId;
-    const instId = active.data.current.instanceId;
+    return prev;
+  });
 
-    console.log("toContainer:", toContainer);
-    console.log("instId:", instId);
-    console.log("overData:", overData);
+  // ------------------------------------
+  // NESTED SORTING
+  // ------------------------------------
+  if (toContainer.startsWith("children-")) {
+    const parentId = toContainer.replace("children-", "");
+    const arr = instanceStoreRef.current[parentId].children;
+    const overId = over.data.current.instanceId;
 
-    if (!toContainer) {
-      console.log("❌ no containerId on over");
-      return;
+    const oldIdx = arr.indexOf(instId);
+    const newIdx = arr.indexOf(overId);
+
+    if (oldIdx !== -1 && newIdx !== -1) {
+      arr.splice(oldIdx, 1);
+      arr.splice(newIdx, 0, instId);
     }
+  }
+};
 
-    setContainerState(prev => {
-      const arr = prev[toContainer];
-      console.log("arr before reorder:", arr);
 
-      if (!arr) {
-        console.log("❌ arr missing");
-        return prev;
-      }
 
-      if (overData.instanceId && overData.instanceId !== instId) {
-        const target = overData.instanceId;
-        const oldIndex = arr.indexOf(instId);
-        const newIndex = arr.indexOf(target);
-
-        console.log("oldIndex:", oldIndex, "newIndex:", newIndex);
-
-        if (oldIndex !== -1 && newIndex !== -1) {
-          const reordered = [...arr];
-          reordered.splice(oldIndex, 1);
-          reordered.splice(newIndex, 0, instId);
-
-          console.log("arr after reorder:", reordered);
-
-          return { ...prev, [toContainer]: reordered };
-        }
-      }
-
-      console.log("⚠ no reorder happened");
-      return prev;
-    });
-  };
   // --------------------------------------------
   // EDIT ITEM — update instanceStoreRef safely
   // --------------------------------------------
@@ -355,6 +407,7 @@ if (hoveringEmptyArea) {
         id={`overlay-${d.instanceId}`}
         instanceId={d.instanceId}
         label={inst.label}
+        isDragPreview={true}
       />
     );
   };
