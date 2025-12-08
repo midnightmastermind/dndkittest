@@ -43,3 +43,39 @@ html, body {
 .input>button {
   color: white;
 }
+
+.collapsible-drawer {
+  background: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.03),
+      rgba(0, 0, 0, 0.15)
+    ),
+    #262a30;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0 0 6px 6px;
+  overflow: hidden;
+
+  /* Animation properties */
+  transition:
+    max-height 260ms cubic-bezier(0.25, 0.1, 0.25, 1),
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.25, 0.1, 0.25, 1);
+
+  /* Start collapsed state */
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
+
+.collapsible-drawer.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  /* Large max-height so content can expand nicely */
+  max-height: 1000px;
+}
+
+.collapsible-drawer.closed {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  max-height: 0;
+  pointer-events: none;
+}

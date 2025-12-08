@@ -264,10 +264,10 @@ export default function Panel({
         {/* CONTENT */}
         <div
           style={{
-            margin: 10,
             color: "white",
             height: "100%",
-            overflow: "hidden"
+            overflow: "hidden",
+            margin: 10
           }}
         >
           {RenderedComponent && (

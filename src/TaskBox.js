@@ -56,7 +56,7 @@ export default function TaskBox({ panelId, containerId, disabled }) {
         height: "100%",
         overflowY: "auto",
         display: "flex",
-        flexDirection: "column"
+        flexDirection: "column",
       }}
     >
       {/* SORTABLE ITEMS */}

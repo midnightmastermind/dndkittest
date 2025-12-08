@@ -37,7 +37,8 @@ export default function Schedule({ containerId, disabled }) {
         overflowY: "auto",
         display: "flex",
         flexDirection: "column",
-        gap: 6
+        gap: 6,
+        margin: 10
       }}
     >
       {slots.map((slot) => (
@@ -91,7 +92,7 @@ function Slot({ slotId, label, instanceIds, disabled }) {
         }}
       >
         {instanceIds.map((id) => (
-          <SortableItem key={id} instanceId={id} containerId={slotId} />
+          <SortableItem key={id} instanceId={id} containerId={slotId} isDragPreview={true}/>
         ))}
       </SortableContext>
     </div>

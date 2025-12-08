@@ -1,23 +1,42 @@
-// SortableItem.jsx — WORKING VERSION WITH POPUP + TRIGGER PROPS
 import React, { useContext, useRef, useState } from "react";
-import { useSortable } from "@dnd-kit/sortable";
+import {
+    useSortable,
+    SortableContext,
+    verticalListSortingStrategy
+} from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { ScheduleContext } from "./ScheduleContext";
 import Popup from "@atlaskit/popup";
 import Textfield from "@atlaskit/textfield";
 import EditIcon from "@atlaskit/icon/glyph/edit";
 import TrashIcon from "@atlaskit/icon/glyph/trash";
 
-export default function SortableItem({ instanceId, containerId }) {
-    const { instanceStoreRef, editItem, deleteItem, anyDragging } = useContext(ScheduleContext);
+import { ScheduleContext } from "./ScheduleContext";
+
+export default function SortableItem({
+    instanceId,
+    containerId,
+    isDragPreview = false
+}) {
+    const { instanceStoreRef, editItem, deleteItem, anyDragging } =
+        useContext(ScheduleContext);
 
     const inst = instanceStoreRef.current[instanceId] || {};
-    const label = inst.label ?? "Untitled";
+
+    const [collapsed, setCollapsed] = useState(true);
+
+    const {
+        label = "Untitled",
+        children = [],
+        childrenSortable = false
+    } = inst;
 
     const [isOpen, setIsOpen] = useState(false);
     const [draft, setDraft] = useState(label);
+    const anchorRef = useRef(null);
 
-    const anchorRef = useRef(null); // 🔥 stable anchor
+    // draggable only when collapsed
+    const sortableDisabled = children.length > 0 && !collapsed;
 
     const {
         setNodeRef,
@@ -28,127 +47,247 @@ export default function SortableItem({ instanceId, containerId }) {
         isDragging
     } = useSortable({
         id: instanceId,
+        disabled: sortableDisabled,
         data: { type: "task", instanceId, containerId }
     });
-        React.useEffect(() => {
-            if (anyDragging && isOpen) {
-                setIsOpen(false);
-            }
-        }, [anyDragging]);
+
+    React.useEffect(() => {
+        if (anyDragging && isOpen) setIsOpen(false);
+        if (isDragging && !collapsed) setCollapsed(true);
+    }, [anyDragging, isDragging]);
+
     const save = () => {
         editItem(instanceId, draft.trim() || "Untitled");
         setIsOpen(false);
     };
-    const style = {
+    // freeze-render flag
+    const shouldHideChildren = isDragging || collapsed;
+
+    const wrapperStyle = {
         transform: CSS.Transform.toString(transform),
         transition,
+        width: "100%",
         opacity: isDragging ? 0.5 : 1,
+        marginBottom: 5
+    };
+
+    const rowStyle = {
         background: "#2F343A",
         border: "1px solid #444",
         borderRadius: 6,
         padding: "6px 10px",
-        marginBottom: 4,
         color: "white",
-        cursor: "grab",
-        fontSize: 14,
-        touchAction: "none",
+        cursor: sortableDisabled ? "default" : "grab",
         display: "flex",
         alignItems: "center",
-        justifyContent: "start",
+        fontSize: 14,
+        touchAction: "none"
     };
 
+    // ---------------------------------------------------
+    // CHILDREN DROPPABLE + BOTTOM SLOT
+    // ---------------------------------------------------
+    const childContainerId = `children-${instanceId}`;
+    const isChildDroppable = childrenSortable && !collapsed && !isDragPreview;
+
+    const { setNodeRef: setDroppableChildren } = useDroppable({
+        id: childContainerId,
+        data: { role: "nested-container", containerId: childContainerId },
+        disabled: !isChildDroppable
+    });
+
+    // ⭐ bottom droppable sentinel
+    const bottomId = `bottom-${childContainerId}`;
+    const { setNodeRef: setBottomRef } = useDroppable({
+        id: bottomId,
+        data: { role: "nested-bottom-slot", containerId: childContainerId },
+        disabled: !isChildDroppable
+    });
+
+    const toggleCollapse = () => {
+        instanceStoreRef.current[instanceId].collapsed = !collapsed;
+        setCollapsed(!collapsed);
+    };
 
     return (
         <div
             ref={setNodeRef}
-            {...attributes}
-            {...listeners}
-            style={style}
+            style={wrapperStyle}
+            {...(!sortableDisabled ? attributes : {})}
+            {...(!sortableDisabled ? listeners : {})}
         >
-            {/* 🔥 Stable non-draggable wrapper for popup trigger */}
-            <div
-                ref={anchorRef}
-               
+            {/* Parent row */}
+            <div style={rowStyle} data-dndkit-disable-drag={sortableDisabled}>
+                {children.length > 0 && (
+                    <button
+                        data-dndkit-disable-drag
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={e => {
+                            e.stopPropagation();
+                            toggleCollapse();
+                        }}
+                        style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            marginRight: 6,
+                            transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                            transition: "transform 150ms ease",
+                            color: "white",
+                            fontSize: 14
+                        }}
+                    >
+                        ▶
+                    </button>
+                )}
 
-                style={{ display: "flex", borderRadius: 6 }}
-            >
-                <Popup
-                    isOpen={isOpen}
-                    onClose={() => setIsOpen(false)}
-                    placement="right-start"
-                    shouldCloseOnBlur={false}
-                    referenceElement={anchorRef.current}
-                    content={() => (
-                        <div
-                            data-dndkit-disable-drag
-                            onPointerDown={(e) => e.stopPropagation()}
-                            className="input"
-                            style={{
-                                background: "#1D2125",
-                                padding: 10,
-                                borderRadius: 4,
-                                border: "1px solid #555",
-                                width: 200,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 6
-                            }}
-                        >
-                            <Textfield
-                                appearance="standard"
-                                autoFocus
-                                value={draft}
-                                onChange={(e) => setDraft(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === "Enter") save();
-                                    e.stopPropagation();
-                                }}
-                            />
-                            <button
-                                onClick={() => deleteItem(instanceId)}
-                                style={{
-                                    background: "#C9372C",
-                                    border: "none",
-                                    width: 40,
-                                    height: 40,
+                {/* Editor popup */}
+                <div
+                    ref={anchorRef}
+                    data-dndkit-disable-drag
+                    onPointerDown={e => e.stopPropagation()}
+                >
+                    <Popup
+                        isOpen={isOpen}
+                        onClose={() => setIsOpen(false)}
+                        placement="right-start"
+                        shouldCloseOnBlur={false}
+                        referenceElement={anchorRef.current}
+                        content={() => (
+                            <div
+                                data-dndkit-disable-drag
+                                onPointerDown={e => e.stopPropagation()}
+                 style={{
+                                    background: "#1D2125",
+                                    padding: 10,
                                     borderRadius: 4,
+                                    border: "1px solid #555",
+                                    width: 200,
                                     display: "flex",
                                     alignItems: "center",
-                                    justifyContent: "center",
-                                    cursor: "pointer"
+                                    justifyContent: "space-between",
+                                    gap: 6
                                 }}
                             >
-                                <TrashIcon size="small" primaryColor="white" />
+                                <Textfield
+                                    autoFocus
+                                    value={draft}
+                                    onChange={e => setDraft(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === "Enter") save();
+                                        e.stopPropagation();
+                                    }}
+                                />
+
+                                <button
+                                    onClick={() => deleteItem(instanceId)}
+                                    style={{
+                                        background: "#C9372C",
+                                        border: "none",
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: 4,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        cursor: "pointer"
+                                    }}
+                                >
+                                    <TrashIcon size="small" primaryColor="white" />
+                                </button>
+                            </div>
+                        )}
+                        trigger={triggerProps => (
+                            <button
+                                {...triggerProps}
+                                data-dndkit-disable-drag
+                                onClick={e => {
+                                    e.stopPropagation();
+                                    setDraft(label);
+                                    setIsOpen(!isOpen);
+                                }}
+                                style={{
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    color: "white",
+                                    padding: 4
+                                }}
+                            >
+                                <EditIcon size="small" />
                             </button>
+                        )}
+                    />
+                </div>
 
+                <div style={{ marginLeft: 10 }}>{label}</div>
+            </div>
 
-                        </div>
-                    )}
-                    trigger={(triggerProps) => (
-                        <button
-                            {...triggerProps}
-                            data-dndkit-disable-drag
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setDraft(label);
-                                setIsOpen(!isOpen);
-                            }}
-                            onPointerDown={(e) => e.stopPropagation()}
+            {/* ----------------------------------------------
+                CHILDREN DRAWER
+                Drawer remains mounted so animation works.
+                But child content is frozen while dragging.
+            ----------------------------------------------- */}
+            <div className={`collapsible-drawer ${collapsed ? "closed" : "open"}`}>
+                
+                {(children.length > 0 || childrenSortable) && (
+                    <div
+                        style={{
+                            paddingLeft: 10,
+                            background:
+                                "linear-gradient(to bottom, rgba(255,255,255,0.03), rgba(0,0,0,0.15)), #262a30",
+                            borderLeft: "1px solid #444"
+                        }}
+                    >
+                        <div
+                            ref={isChildDroppable ? setDroppableChildren : null}
                             style={{
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: "white",
-                                padding: 4
+                                paddingTop: 5,
+                                opacity: collapsed ? 0 : 1,
+                                transition: "opacity 150ms ease"
                             }}
                         >
-                            <EditIcon size="small" />
-                        </button>
-                    )}
-                />
+                            {/* FREEZE CHILD CONTENT DURING DRAG */}
+                            {!shouldHideChildren && (
+                                childrenSortable ? (
+                                    <SortableContext
+                                        id={childContainerId}
+                                        items={children}
+                                        strategy={verticalListSortingStrategy}
+                                        data={{
+                                            role: "nested-container",
+                                            containerId: childContainerId
+                                        }}
+                                    >
+                                        {children.map(childId => (
+                                            <SortableItem
+                                                key={childId}
+                                                instanceId={childId}
+                                                containerId={childContainerId}
+                                            />
+                                        ))}
+
+                                        {/* Bottom drop zone */}
+                                        <div
+                                            ref={setBottomRef}
+                                            style={{ height: 40, opacity: 0.2 }}
+                                        />
+                                    </SortableContext>
+                                ) : (
+                                    children.map(childId => (
+                                        <SortableItem
+                                            key={childId}
+                                            instanceId={childId}
+                                            containerId={childContainerId}
+                                        />
+                                    ))
+                                )
+                            )}
+                        </div>
+                    </div>
+                )}
+
             </div>
-            <div style={{ marginLeft: 10 }}>{label}</div>
         </div>
     );
 }
