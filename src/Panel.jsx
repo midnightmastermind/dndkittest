@@ -3,7 +3,7 @@ import { useDraggable } from "@dnd-kit/core";
 import ResizeHandle from "./ResizeHandle";
 import Button from "@atlaskit/button";
 import { token } from "@atlaskit/tokens";
-
+import MoreVerticalIcon from "@atlaskit/icon/glyph/more-vertical";
 export default function Panel({
   panel,
   components,
@@ -180,7 +180,7 @@ export default function Panel({
         border: "1px solid #AAA",
         overflow: "hidden",
         position: "relative",
-        margin: "1px",
+        margin: "3px",
         zIndex: isFullscreen ? 60 : 50,
         pointerEvents: fullscreenPanelId !== null && panel.id !== fullscreenPanelId ? "none" : "auto",
       }}
@@ -203,7 +203,11 @@ export default function Panel({
             color: "white"
           }}
         >
-          <div style={{ paddingLeft: 6 }}>{panel.label || "Panel"}</div>
+          <div style={{ paddingLeft: 6 }}><MoreVerticalIcon
+      size="small"
+      label="Drag"
+      primaryColor="#9AA0A6"
+    /></div>
           <div className="input" style={{ display: "flex", alignItems: "center" }}>
             <select
               value={panel.type}

@@ -63,7 +63,6 @@ export default function Grid({
   const [activeId, setActiveId] = useState(null);
   const [activeData, setActiveData] = useState(null);
   const [panelDragging, setPanelDragging] = useState(false);
-  const [fullscreenPanelId, setFullscreenPanelId] = useState(null);
 
   // track dimensions
   const [colSizes, setColSizes] = useState(() => Array(cols).fill(1));
@@ -84,21 +83,15 @@ export default function Grid({
   const colTemplate = colSizes.map((s) => `${s}fr`).join(" ");
   const rowTemplate = rowSizes.map((s) => `${s}fr`).join(" ");
 
-const sensors = useSensors(
-  useSensor(PointerSensor, {
-    activationConstraint: {
-      distance: 8     // prevents click from triggering drag
-    }
-  }),
-
+  const sensors = useSensors(
   useSensor(TouchSensor, {
     activationConstraint: {
-      delay: 300,     // long-press to drag on mobile
-      tolerance: 5
+      delay: 500,     // time finger must hold before drag begins
+      tolerance: 8,   // movement allowed before cancelling drag
     }
-  })
+  }),
+  useSensor(PointerSensor) // optional fallback for mouse
 );
-
 
   const getPanel = (id) => panels.find((p) => p.id === id);
 
@@ -351,7 +344,7 @@ const sensors = useSensors(
             justifyContent: "center",
             color: "white",
             cursor: "pointer",
-            zIndex: 51,
+            zIndex: 2,
           }}
         >
           🔧
@@ -430,8 +423,6 @@ const sensors = useSensors(
               activeId={activeId}
               components={components}
               gridActive={panelDragging}
-              fullscreenPanelId={fullscreenPanelId}
-              setFullscreenPanelId={setFullscreenPanelId}
             />
           ))}
         </div>

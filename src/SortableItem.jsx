@@ -51,6 +51,7 @@ export default function SortableItem({ instanceId, containerId }) {
         color: "white",
         cursor: "grab",
         fontSize: 14,
+        touchAction: "none",
         display: "flex",
         alignItems: "center",
         justifyContent: "start",
@@ -63,13 +64,12 @@ export default function SortableItem({ instanceId, containerId }) {
             {...attributes}
             {...listeners}
             style={style}
-            touchaction="none"
         >
             {/* 🔥 Stable non-draggable wrapper for popup trigger */}
             <div
                 ref={anchorRef}
-                data-dndkit-disable-drag
-                onPointerDown={(e) => e.stopPropagation()}
+               
+
                 style={{ display: "flex", borderRadius: 6 }}
             >
                 <Popup
