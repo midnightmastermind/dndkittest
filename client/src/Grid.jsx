@@ -17,6 +17,7 @@ import { updatePanel, updateGrid } from "./state/actions";
 import { emit } from "./socket";
 import { ScheduleContext } from "./ScheduleContext";
 
+
 /* ------------------------------------------------------------
    DROPPABLE GRID CELL
 ------------------------------------------------------------ */
@@ -47,6 +48,38 @@ function CellDroppable({ r, c, dark }) {
   );
 }
 
+
+
+function smartCollisionDetection(args) {
+  const collisions = pointerWithin(args);
+
+  // Pointer position
+  const x = args.pointerCoordinates?.x ?? 0;
+  const y = args.pointerCoordinates?.y ?? 0;
+
+  return collisions.filter((collision) => {
+    const id = collision.id;
+
+    // Find the DOM node
+    const el = document.querySelector(`[data-id="${id}"]`);
+    if (!el) return true; // keep other droppables
+
+    // Only special-filter Schedule panels
+    const isSchedule = el.classList.contains("schedule-panel");
+    if (!isSchedule) return true; // don't block anything else
+
+    const rect = el.getBoundingClientRect();
+
+    // Must be inside the visible region to count as "over"
+    const inside =
+      x >= rect.left &&
+      x <= rect.right &&
+      y >= rect.top &&
+      y <= rect.bottom;
+
+    return inside;
+  });
+}
 /* ------------------------------------------------------------
    GRID COMPONENT — FINAL VERSION USING CONTEXT
 ------------------------------------------------------------ */
@@ -71,6 +104,11 @@ export default function Grid({
   const [activeId, setActiveId] = useState(null);
   const [activeData, setActiveData] = useState(null);
   const [panelDragging, setPanelDragging] = useState(false);
+
+  /* ------------------------------------------------------------
+      🔥 NEW: Track transform during panel drag
+  ------------------------------------------------------------ */
+  const panelDragLiveRef = useRef({ id: null, dx: 0, dy: 0 });
 
   /* ------------------------------------------------------------
       GRID SIZE STATE
@@ -111,8 +149,9 @@ export default function Grid({
   );
 
   const getPanel = (id) => visiblePanels.find((p) => p.id === id);
+
   /* ------------------------------------------------------------
-     Pointer → Cell Mapping
+      POINTER → CELL
   ------------------------------------------------------------ */
   const getCellFromPointer = (clientX, clientY) => {
     const rect = gridRef.current.getBoundingClientRect();
@@ -126,20 +165,14 @@ export default function Grid({
     let acc = 0;
     for (let i = 0; i < colSizes.length; i++) {
       acc += colSizes[i];
-      if (relX < acc / totalCols) {
-        col = i;
-        break;
-      }
+      if (relX < acc / totalCols) { col = i; break; }
     }
 
     const totalRows = rowSizes.reduce((a, b) => a + b, 0);
     acc = 0;
     for (let i = 0; i < rowSizes.length; i++) {
       acc += rowSizes[i];
-      if (relY < acc / totalRows) {
-        row = i;
-        break;
-      }
+      if (relY < acc / totalRows) { row = i; break; }
     }
 
     return { row, col };
@@ -165,78 +198,101 @@ export default function Grid({
     setActiveData(event.active.data.current);
 
     const data = event.active.data.current;
+
     if (data?.role === "panel") {
+      panelDragLiveRef.current = { id: data.panelId, dx: 0, dy: 0 };
       setPanelDragging(true);
     } else {
       handleDragStartProp(event);
     }
   };
 
+  /* ------------------------------------------------------------
+      🔥 DRAG MOVE — Smooth panel transform
+  ------------------------------------------------------------ */
   const handleDragMove = (event) => {
-    if (event.active.data.current?.role !== "panel") {
+    const data = event.active.data.current;
+    if (data?.role !== "panel") {
       handleDragOverProp(event);
+      return;
     }
+
+    const p = document.querySelector(`[data-panel-id='${data.panelId}']`);
+    if (p) {
+      p.style.transition = "none";
+      p.style.transform = `translate(${event.delta.x}px, ${event.delta.y}px)`;
+    }
+
+    panelDragLiveRef.current.dx = event.delta.x;
+    panelDragLiveRef.current.dy = event.delta.y;
   };
 
+  /* ------------------------------------------------------------
+      SANITIZE PLACEMENT
+  ------------------------------------------------------------ */
   const sanitizePanelPlacement = (panel, rows, cols) => ({
     ...panel,
     row: Math.max(0, Math.min(panel.row, rows - 1)),
     col: Math.max(0, Math.min(panel.col, cols - 1)),
-    width: 1,
-    height: 1
+    width: panel.width,
+    height: panel.height
   });
 
+  /* ------------------------------------------------------------
+      🔥 DRAG END — Commit final placement ONCE
+  ------------------------------------------------------------ */
   const handleDragEnd = (event) => {
-    const { active, over } = event;
+    const { active } = event;
+
     setActiveId(null);
     setPanelDragging(false);
 
-    if (!active) return;
-    const data = active.data.current;
+    const data = active?.data?.current;
+    if (!data) return;
 
-    if (data?.role !== "panel") {
+    if (data.role !== "panel") {
       handleDragEndProp(event);
       return;
     }
 
-    if (over) {
-      const pointer = {
-        x: event.activatorEvent.clientX + event.delta.x,
-        y: event.activatorEvent.clientY + event.delta.y
-      };
+    const panel = getPanel(active.id);
+    if (!panel) return;
 
-      const { col, row } = getCellFromPointer(pointer.x, pointer.y);
-      let updated = {
-        ...getPanel(active.id),
-        col,
-        row,
-        width: 1,
-        height: 1,
-        gridId
-      };
+    const pointerX = event.activatorEvent.clientX + panelDragLiveRef.current.dx;
+    const pointerY = event.activatorEvent.clientY + panelDragLiveRef.current.dy;
 
-      updated = sanitizePanelPlacement(updated, rows, cols);
+    const { col, row } = getCellFromPointer(pointerX, pointerY);
 
-      dispatch(updatePanel(updated));
-      emit("update_panel", { panel: updated, gridId });
+    let updated = sanitizePanelPlacement(
+      { ...panel, col, row },
+      rows,
+      cols
+    );
+
+    dispatch(updatePanel(updated));
+    emit("update_panel", { panel: updated, gridId });
+
+    /* 🔥 Reset transform after drop */
+    const p = document.querySelector(`[data-panel-id='${panel.id}']`);
+    if (p) {
+      p.style.transition = "transform 150ms ease";
+      p.style.transform = "translate(0,0)";
     }
+
+    panelDragLiveRef.current = { id: null, dx: 0, dy: 0 };
   };
 
   /* ------------------------------------------------------------
-      GRID RESIZING — SAVE ONLY ON STOP
+      GRID RESIZING (unchanged)
   ------------------------------------------------------------ */
-
-  // ★ NEW REFS TO TRACK CHANGES DURING DRAG
   const resizePendingRef = useRef({
     rowSizes: null,
     colSizes: null
   });
 
-  // ★ Save once AFTER dragging stops
   const finalizeResize = () => {
     const pending = resizePendingRef.current;
     if (!pending.rowSizes && !pending.colSizes) return;
-
     if (!state.grid?._id) return;
 
     dispatch(
@@ -260,16 +316,12 @@ export default function Grid({
       }
     });
 
-    // reset
     resizePendingRef.current = { rowSizes: null, colSizes: null };
   };
 
   const getGridWidth = () => gridRef.current?.clientWidth || 1;
   const getGridHeight = () => gridRef.current?.clientHeight || 1;
 
-  /* ------------------------------------------------------------
-      RESIZE COLUMN — NO SAVING INSIDE DRAG
-  ------------------------------------------------------------ */
   const resizeColumn = (i, pixelDelta) => {
     const gridWidth = getGridWidth();
     setColSizes((sizes) => {
@@ -283,16 +335,11 @@ export default function Grid({
       copy[i] = Math.max(0.3, copy[i] + frDelta);
       copy[next] = Math.max(0.3, copy[next] - frDelta);
 
-      // ★ store in pending
       resizePendingRef.current.colSizes = copy;
-
       return copy;
     });
   };
 
-  /* ------------------------------------------------------------
-      RESIZE ROW — NO SAVING INSIDE DRAG
-  ------------------------------------------------------------ */
   const resizeRow = (i, pixelDelta) => {
     const gridHeight = getGridHeight();
     setRowSizes((sizes) => {
@@ -306,16 +353,11 @@ export default function Grid({
       copy[i] = Math.max(0.3, copy[i] + frDelta);
       copy[next] = Math.max(0.3, copy[next] - frDelta);
 
-      // ★ store pending
       resizePendingRef.current.rowSizes = copy;
-
       return copy;
     });
   };
 
-  /* ------------------------------------------------------------
-      RESIZE HANDLERS — SAVE ON STOP
-  ------------------------------------------------------------ */
   const getClientX = (e) => (e.touches ? e.touches[0].clientX : e.clientX);
   const getClientY = (e) => (e.touches ? e.touches[0].clientY : e.clientY);
 
@@ -337,7 +379,7 @@ export default function Grid({
       window.removeEventListener("touchmove", move);
       window.removeEventListener("touchend", stop);
 
-      finalizeResize(); // ★ SAVE HERE ONLY
+      finalizeResize();
     };
 
     window.addEventListener("mousemove", move);
@@ -364,7 +406,7 @@ export default function Grid({
       window.removeEventListener("touchmove", move);
       window.removeEventListener("touchend", stop);
 
-      finalizeResize(); // ★ SAVE HERE ONLY
+      finalizeResize();
     };
 
     window.addEventListener("mousemove", move);
@@ -378,11 +420,10 @@ export default function Grid({
   /* ------------------------------------------------------------
       RENDER
   ------------------------------------------------------------ */
-
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={pointerWithin}
+      collisionDetection={smartCollisionDetection}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
@@ -498,8 +539,8 @@ export default function Grid({
 
         {!getPanel(activeId) && activeData
           ? renderDragOverlay({
-            active: { id: activeId, data: { current: activeData } }
-          })
+              active: { id: activeId, data: { current: activeData } }
+            })
           : null}
       </DragOverlay>
     </DndContext>

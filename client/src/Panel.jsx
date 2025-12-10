@@ -4,7 +4,6 @@ import ResizeHandle from "./ResizeHandle";
 import Button from "@atlaskit/button";
 import { token } from "@atlaskit/tokens";
 import MoreVerticalIcon from "@atlaskit/icon/glyph/more-vertical";
-
 import { ACTIONS } from "./state/actions";
 import { emit } from "./socket";
 
@@ -21,14 +20,16 @@ export default function Panel({
   setFullscreenPanelId
 }) {
   const panelRef = useRef(null);
-  const [isResizing, setIsResizing] = useState(false);
-  const prev = useRef(null);
+
+  /* ------------------------------------------------------------
+     🔥 NEW: Local transform refs (smooth live drag + resize)
+  ------------------------------------------------------------ */
+  const dragTransformRef = useRef({ x: 0, y: 0 });
+  const resizeTransformRef = useRef({ w: null, h: null });
+  const isDraggingPanel = activeId === panel.id;
 
   const RenderedComponent = components[panel.type];
 
-  // -------------------------------
-  // Draggable metadata
-  // -------------------------------
   const data = useMemo(
     () => ({
       role: "panel",
@@ -43,30 +44,27 @@ export default function Panel({
 
   const { setNodeRef, attributes, listeners } = useDraggable({
     id: panel.id,
-    disabled: isResizing,
-    data
+    data,
+    disabled: false
   });
 
-  const dragListeners = isResizing ? {} : listeners;
-  const isDragging = activeId === panel.id;
-
-  // ======================================================
-  // UPDATE PANEL (Reducer + Socket)
-  // ======================================================
-  const updatePanel = (updated) => {
-    console.log(updated);
+  /* ------------------------------------------------------------
+     🔥 UPDATE PANEL FINAL STATE (Reducer + Socket)
+  ------------------------------------------------------------ */
+  const updatePanelFinal = (updated) => {
     dispatch({ type: ACTIONS.UPDATE_PANEL, payload: updated });
     emit("update_panel", { panel: updated, gridId: panel.gridId });
   };
 
-  // ======================================================
-  // FULLSCREEN LOGIC
-  // ======================================================
+  /* ------------------------------------------------------------
+     FULLSCREEN LOGIC (unchanged)
+  ------------------------------------------------------------ */
+  const prev = useRef(null);
   const toggleFullscreen = () => {
     if (!fullscreenPanelId) {
-      prev.current = { ...panel }; // Save original
+      prev.current = { ...panel };
 
-      updatePanel({
+      updatePanelFinal({
         ...panel,
         row: 0,
         col: 0,
@@ -76,7 +74,7 @@ export default function Panel({
 
       setFullscreenPanelId(panel.id);
     } else {
-      updatePanel({
+      updatePanelFinal({
         ...panel,
         ...prev.current
       });
@@ -85,9 +83,9 @@ export default function Panel({
     }
   };
 
-  // ======================================================
-  // GRID HELPERS
-  // ======================================================
+  /* ------------------------------------------------------------
+     GRID HELPERS
+  ------------------------------------------------------------ */
   const getTrackInfo = () => {
     const data = gridRef.current?.dataset.sizes;
     return data ? JSON.parse(data) : null;
@@ -121,61 +119,79 @@ export default function Panel({
     return rowSizes.length - 1;
   };
 
-  // ======================================================
-  // RESIZE HANDLER
-  // ======================================================
+  /* ------------------------------------------------------------
+     🔥 NEW: RESIZE HANDLER USING TRANSFORM (no Redux spam)
+  ------------------------------------------------------------ */
   const beginResize = (event) => {
     event.preventDefault();
     event.stopPropagation();
-    setIsResizing(true);
 
     const getX = (ev) => ev.clientX ?? ev.touches?.[0]?.clientX;
     const getY = (ev) => ev.clientY ?? ev.touches?.[0]?.clientY;
 
+    const startX = getX(event);
+    const startY = getY(event);
+
     const move = (ev) => {
-      const clientX = getX(ev);
-      const clientY = getY(ev);
+      ev.preventDefault();
+      const x = getX(ev);
+      const y = getY(ev);
 
-      const newCol = colFromPx(clientX);
-      const newRow = rowFromPx(clientY);
+      const gridRect = gridRef.current.getBoundingClientRect();
 
-      const width = Math.max(1, newCol - panel.col + 1);
-      const height = Math.max(1, newRow - panel.row + 1);
+      const col = colFromPx(x);
+      const row = rowFromPx(y);
 
-      updatePanel({
-        ...panel,
-        width: Math.min(width, cols - panel.col),
-        height: Math.min(height, rows - panel.row)
-      });
+      const newW = Math.max(1, col - panel.col + 1);
+      const newH = Math.max(1, row - panel.row + 1);
+
+      resizeTransformRef.current = {
+        w: Math.min(newW, cols - panel.col),
+        h: Math.min(newH, rows - panel.row)
+      };
+
+      panelRef.current.style.transform = `scale(1)`; // keeps GPU active
+      panelRef.current.style.opacity = 0.92;
     };
 
     const stop = () => {
-      setIsResizing(false);
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", stop);
       window.removeEventListener("touchmove", move);
       window.removeEventListener("touchend", stop);
-      window.removeEventListener("touchcancel", stop);
+
+      const { w, h } = resizeTransformRef.current;
+      resizeTransformRef.current = { w: null, h: null };
+
+      // Commit final dimensions to Redux
+      updatePanelFinal({
+        ...panel,
+        width: w ?? panel.width,
+        height: h ?? panel.height
+      });
+
+      panelRef.current.style.opacity = 1;
     };
 
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", stop);
     window.addEventListener("touchmove", move, { passive: false });
     window.addEventListener("touchend", stop);
-    window.addEventListener("touchcancel", stop);
   };
 
-  // GRID AREA
+  /* ------------------------------------------------------------
+     🔥 COMPUTE GRID AREA (live during resize)
+  ------------------------------------------------------------ */
+  const liveW = resizeTransformRef.current.w ?? panel.width;
+  const liveH = resizeTransformRef.current.h ?? panel.height;
+
   const gridArea = `${panel.row + 1} / ${panel.col + 1} /
-                    ${panel.row + panel.height + 1} /
-                    ${panel.col + panel.width + 1}`;
+                    ${panel.row + liveH + 1} /
+                    ${panel.col + liveW + 1}`;
 
-  const isFullscreen =
-    fullscreenPanelId !== null && panel.id === fullscreenPanelId;
-
-  // ======================================================
-  // RENDER PANEL
-  // ======================================================
+  /* ------------------------------------------------------------
+     RENDER PANEL
+  ------------------------------------------------------------ */
   return (
     <div
       ref={(el) => {
@@ -191,11 +207,14 @@ export default function Panel({
         overflow: "hidden",
         position: "relative",
         margin: "3px",
-        zIndex: isFullscreen ? 60 : 50
+        zIndex: isDraggingPanel ? 9999 : 50,
+        transform: isDraggingPanel
+          ? `translate(${dragTransformRef.current.x}px, ${dragTransformRef.current.y}px)`
+          : "translate(0,0)",
+        transition: isDraggingPanel ? "none" : "transform 120ms ease"
       }}
     >
       <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
         {/* HEADER */}
         <div
           style={{
@@ -209,18 +228,22 @@ export default function Panel({
             color: "white",
           }}
         >
-          <div style={{ paddingLeft: 6 }} {...dragListeners}>
+          {/* DRAG HANDLE */}
+          <div
+            style={{ paddingLeft: 6, touchAction: "none" }}
+            {...listeners}
+          >
             <MoreVerticalIcon size="small" primaryColor="#9AA0A6" />
           </div>
 
-          {/* TYPE SWITCHER */}
+          {/* TYPE SWITCHER + FULLSCREEN */}
           <div style={{ display: "flex", alignItems: "center" }}>
             <select
               value={panel.type}
               onChange={(e) => {
                 const newType = e.target.value;
 
-                updatePanel({
+                updatePanelFinal({
                   ...panel,
                   type: newType,
                   props: {
@@ -241,18 +264,13 @@ export default function Panel({
             </select>
 
             <Button spacing="compact" onClick={toggleFullscreen}>
-              {isFullscreen ? "Restore" : "Fullscreen"}
+              {fullscreenPanelId === panel.id ? "R" : "F"}
             </Button>
           </div>
         </div>
 
-        {/* CONTENT */}
-        <div style={{
-          flex: 1,
-          minHeight: 0,         // 🔥 Necessary for children to scroll
-          color: "white",
-          margin: 5
-        }}>
+        {/* PANEL CONTENT */}
+        <div className={"schedule-panel"} style={{ flex: 1, minHeight: 0, color: "white", margin: 5 }}>
           {RenderedComponent && (
             <RenderedComponent
               {...panel.props}
@@ -261,8 +279,12 @@ export default function Panel({
             />
           )}
         </div>
+
         {/* RESIZE HANDLE */}
-        <ResizeHandle onMouseDown={beginResize} onTouchStart={beginResize} />
+        <ResizeHandle
+          onMouseDown={beginResize}
+          onTouchStart={beginResize}
+        />
       </div>
     </div>
   );

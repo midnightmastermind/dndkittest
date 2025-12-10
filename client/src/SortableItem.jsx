@@ -67,6 +67,8 @@ const SortableItem = ({ instanceId, isDragPreview = false }) => {
         transition,
         width: "100%",
         opacity: isDragging ? 0.5 : 1,
+        pointerEvents: "auto",
+        touchAction: "none"
     };
 
     const rowStyle = {

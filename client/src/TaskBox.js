@@ -105,7 +105,7 @@ export default function TaskBox({ containerId, disabled }) {
         ref={setListDrop}
         style={{
           width: "100%",
-          pointerEvents: "auto",
+          pointerEvents: "none",
           display: "flex",
           flexDirection: "column",
           gap: "3px"
