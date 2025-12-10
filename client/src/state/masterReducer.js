@@ -142,14 +142,24 @@ export function masterReducer(state, action) {
     // GRID SIZE
     // ------------------------------
     case ACTIONS.UPDATE_GRID: {
+      const current = state.grid;
+
+      // Do NOT allow update if grid hasn't been hydrated
+      if (!current || !current._id) {
+        console.warn("⛔ UPDATE_GRID ignored: grid not loaded yet", action.payload);
+        return state;
+      }
+
+      // Only merge the fields provided, do not replace the grid object
       return {
         ...state,
         grid: {
-          ...state.grid,
+          ...current,
           ...action.payload
         }
       };
     }
+
     case ACTIONS.SET_USER_ID: {
       return {
         ...state,

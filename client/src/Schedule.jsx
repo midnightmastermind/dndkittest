@@ -23,19 +23,19 @@ function generateSlots(containerId) {
   return out;
 }
 
-export default function Schedule({ containerId, disabled }) {
+const Schedule = ({ containerId, disabled }) => {
   const { state, previewContainersRef } = useContext(ScheduleContext);
 
-  // ⭐ ALWAYS derive from state first so React re-renders properly
-  let containerMap = state.containers;
-
-  // ⭐ Override with preview only if dragging
-  if (
-    previewContainersRef.current &&
-    typeof previewContainersRef.current === "object"
-  ) {
-    containerMap = previewContainersRef.current;
-  }
+  // ⭐ MEMOIZED containerMap to avoid re-render storm
+  const containerMap = React.useMemo(() => {
+    if (
+      previewContainersRef.current &&
+      typeof previewContainersRef.current === "object"
+    ) {
+      return previewContainersRef.current;
+    }
+    return state.containers;
+  }, [state.containers, previewContainersRef.current]);
 
   const slots = generateSlots(containerId);
 
@@ -66,53 +66,60 @@ export default function Schedule({ containerId, disabled }) {
     </div>
   );
 }
+const Slot = React.memo(
+  ({ slotId, label, instanceIds, disabled }) => {
+    const { setNodeRef } = useDroppable({
+      id: slotId,
+      data: {
+        type: "slot",
+        containerId: slotId,
+        role: "schedule-list"
+      },
+      disabled
+    });
 
-function Slot({ slotId, label, instanceIds, disabled }) {
-  const { setNodeRef } = useDroppable({
-    id: slotId,
-    data: {
-      type: "slot",
-      containerId: slotId,
-    },
-    disabled
-  });
+    return (
+      <div
+        ref={setNodeRef}
+        className="schedule"
+        data-role="schedule"
+        data-containerid={slotId}
+        style={{
+          background: "#2D333B",
+          border: "1px solid #444",
+          padding: 6,
+          borderRadius: 6
+        }}
+      >
+        <div style={{ color: "#9AA0A6", fontSize: 12, marginBottom: 4 }}>
+          {label}
+        </div>
 
-  return (
-    <div
-      ref={setNodeRef}
-      className="schedule"
-      data-role="schedule"
-      data-containerid={slotId}
-      style={{
-        background: "#2D333B",
-        border: "1px solid #444",
-        padding: 6,
-        borderRadius: 6,
-      }}
-    >
-      <div style={{ color: "#9AA0A6", fontSize: 12, marginBottom: 4 }}>
-        {label}
+        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+          <SortableContext
+            id={slotId}
+            items={instanceIds}
+            strategy={verticalListSortingStrategy}
+            disabled={disabled}
+            data={{
+              role: "task-container",
+              containerId: slotId
+            }}
+          >
+            {instanceIds.map((id) => (
+              <SortableItem key={id} instanceId={id} containerId={slotId} />
+            ))}
+          </SortableContext>
+        </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-        <SortableContext
-          id={slotId}
-          items={instanceIds}
-          strategy={verticalListSortingStrategy}
-          disabled={disabled}
-          data={{
-            role: "task-container",
-            containerId: slotId
-          }}
-        >
-          {instanceIds.map((id) => (
-            <SortableItem
-              key={id}
-              instanceId={id}
-              containerId={slotId}
-            />
-          ))}
-        </SortableContext>
-      </div>
-    </div>
-  );
-}
+    );
+  },
+  (prev, next) =>
+    prev.slotId === next.slotId &&
+    prev.disabled === next.disabled &&
+    prev.instanceIds === next.instanceIds
+);
+
+
+export default Schedule;
+export { Slot };

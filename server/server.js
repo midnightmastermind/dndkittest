@@ -162,7 +162,7 @@ async function loadGridIntoCache(gridId, userId) {
     // FINAL CACHE
     // -----------------------
     cache[gridId] = {
-        grid,
+        grid: grid.toObject(),
         panels: panelMap,
         containers: containerMap,
         instances: instanceMap
@@ -245,6 +245,8 @@ io.on("connection", (socket) => {
             const newGrid = await Grid.create({
                 rows: 2,
                 cols: 3,
+                rowSizes: [],
+                colSizes: [],
                 userId
             });
 

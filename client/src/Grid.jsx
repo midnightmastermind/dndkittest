@@ -38,8 +38,8 @@ function CellDroppable({ r, c, dark }) {
         background: highlight
           ? "rgba(50,150,255,0.45)"
           : dark
-          ? "#22272B"
-          : "#2C333A",
+            ? "#22272B"
+            : "#2C333A",
         border: "1px solid #3F444A",
         transition: "background 80ms"
       }}
@@ -58,7 +58,6 @@ export default function Grid({
   renderDragOverlay,
   components
 }) {
-  /* 🔥 Pull EVERYTHING from context */
   const { state, dispatch } = useContext(ScheduleContext);
 
   const grid = state.grid;
@@ -66,7 +65,6 @@ export default function Grid({
   const rows = grid?.rows ?? 1;
   const cols = grid?.cols ?? 1;
 
-  // Panels that belong ONLY to this grid
   const visiblePanels = state.panels.filter((p) => p.gridId === gridId);
 
   const gridRef = useRef(null);
@@ -74,37 +72,27 @@ export default function Grid({
   const [activeData, setActiveData] = useState(null);
   const [panelDragging, setPanelDragging] = useState(false);
 
-  /* ----------------------------------------------
-     Track Grid Sizing (uses context state)
-  ---------------------------------------------- */
-/* ----------------------------------------------
-   Track Grid Sizing (uses context state)
----------------------------------------------- */
+  /* ------------------------------------------------------------
+      GRID SIZE STATE
+  ------------------------------------------------------------ */
+  const ensureSizes = (arr, count) =>
+    Array.isArray(arr) && arr.length > 0 ? arr : Array(count).fill(1);
 
-// Helper: Return defaults if array is empty or invalid
-const ensureSizes = (arr, count) => {
-  return Array.isArray(arr) && arr.length > 0
-    ? arr
-    : Array(count).fill(1);
-};
+  const [colSizes, setColSizes] = useState(() =>
+    ensureSizes(grid.colSizes, cols)
+  );
+  const [rowSizes, setRowSizes] = useState(() =>
+    ensureSizes(grid.rowSizes, rows)
+  );
 
-// Initialize with fallback
-const [colSizes, setColSizes] = useState(() =>
-  ensureSizes(grid.colSizes, cols)
-);
-const [rowSizes, setRowSizes] = useState(() =>
-  ensureSizes(grid.rowSizes, rows)
-);
-
-// Sync with context updates, keeping fallback logic
-useEffect(() => {
-  setColSizes(ensureSizes(grid.colSizes, cols));
-}, [grid.colSizes, cols]);
-
-useEffect(() => {
-  setRowSizes(ensureSizes(grid.rowSizes, rows));
-}, [grid.rowSizes, rows]);
-
+  useEffect(() => setColSizes(ensureSizes(grid.colSizes, cols)), [
+    grid.colSizes,
+    cols
+  ]);
+  useEffect(() => setRowSizes(ensureSizes(grid.rowSizes, rows)), [
+    grid.rowSizes,
+    rows
+  ]);
 
   useEffect(() => {
     if (gridRef.current) {
@@ -114,9 +102,6 @@ useEffect(() => {
 
   const colTemplate = colSizes.map((s) => `${s}fr`).join(" ");
   const rowTemplate = rowSizes.map((s) => `${s}fr`).join(" ");
-console.log("GRID ID:", gridId);
-console.log("ALL PANELS:", state.panels);
-console.log("VISIBLE PANELS:", visiblePanels);
 
   const sensors = useSensors(
     useSensor(TouchSensor, {
@@ -126,7 +111,6 @@ console.log("VISIBLE PANELS:", visiblePanels);
   );
 
   const getPanel = (id) => visiblePanels.find((p) => p.id === id);
-
   /* ------------------------------------------------------------
      Pointer → Cell Mapping
   ------------------------------------------------------------ */
@@ -161,15 +145,26 @@ console.log("VISIBLE PANELS:", visiblePanels);
     return { row, col };
   };
 
+  const getColPosition = (i) => {
+    const total = colSizes.reduce((a, b) => a + b, 0);
+    const before = colSizes.slice(0, i + 1).reduce((a, b) => a + b, 0);
+    return (before / total) * 100;
+  };
+
+  const getRowPosition = (i) => {
+    const total = rowSizes.reduce((a, b) => a + b, 0);
+    const before = rowSizes.slice(0, i + 1).reduce((a, b) => a + b, 0);
+    return (before / total) * 100;
+  };
+
   /* ------------------------------------------------------------
-     DRAG START
+      DRAG START
   ------------------------------------------------------------ */
   const handleDragStart = (event) => {
     setActiveId(event.active.id);
     setActiveData(event.active.data.current);
 
     const data = event.active.data.current;
-
     if (data?.role === "panel") {
       setPanelDragging(true);
     } else {
@@ -177,41 +172,26 @@ console.log("VISIBLE PANELS:", visiblePanels);
     }
   };
 
-  /* ------------------------------------------------------------
-     DRAG MOVE
-  ------------------------------------------------------------ */
   const handleDragMove = (event) => {
-    const data = event.active.data.current;
-
-    if (data?.role !== "panel") {
+    if (event.active.data.current?.role !== "panel") {
       handleDragOverProp(event);
     }
   };
 
-  /* ------------------------------------------------------------
-     CLEAN PANEL PLACEMENT
-  ------------------------------------------------------------ */
-  const sanitizePanelPlacement = (panel, rows, cols) => {
-    return {
-      ...panel,
-      row: Math.max(0, Math.min(panel.row, rows - 1)),
-      col: Math.max(0, Math.min(panel.col, cols - 1)),
-      width: 1,
-      height: 1
-    };
-  };
+  const sanitizePanelPlacement = (panel, rows, cols) => ({
+    ...panel,
+    row: Math.max(0, Math.min(panel.row, rows - 1)),
+    col: Math.max(0, Math.min(panel.col, cols - 1)),
+    width: 1,
+    height: 1
+  });
 
-  /* ------------------------------------------------------------
-     DRAG END
-  ------------------------------------------------------------ */
   const handleDragEnd = (event) => {
     const { active, over } = event;
-
     setActiveId(null);
     setPanelDragging(false);
 
     if (!active) return;
-
     const data = active.data.current;
 
     if (data?.role !== "panel") {
@@ -226,7 +206,6 @@ console.log("VISIBLE PANELS:", visiblePanels);
       };
 
       const { col, row } = getCellFromPointer(pointer.x, pointer.y);
-
       let updated = {
         ...getPanel(active.id),
         col,
@@ -244,28 +223,53 @@ console.log("VISIBLE PANELS:", visiblePanels);
   };
 
   /* ------------------------------------------------------------
-     GRID RESIZING HELPERS
+      GRID RESIZING — SAVE ONLY ON STOP
   ------------------------------------------------------------ */
-  const getGridWidth = () => gridRef.current?.clientWidth || 1;
-  const getGridHeight = () => gridRef.current?.clientHeight || 1;
 
-  const saveGridSizes = (rowSizes, colSizes) => {
+  // ★ NEW REFS TO TRACK CHANGES DURING DRAG
+  const resizePendingRef = useRef({
+    rowSizes: null,
+    colSizes: null
+  });
+
+  // ★ Save once AFTER dragging stops
+  const finalizeResize = () => {
+    const pending = resizePendingRef.current;
+    if (!pending.rowSizes && !pending.colSizes) return;
+
+    if (!state.grid?._id) return;
+
     dispatch(
       updateGrid({
-        ...state.grid,
-        rowSizes,
-        colSizes
+        _id: state.grid._id,
+        rows: state.grid.rows,
+        cols: state.grid.cols,
+        rowSizes: pending.rowSizes ?? rowSizes,
+        colSizes: pending.colSizes ?? colSizes
       })
     );
 
     emit("update_grid", {
-      gridId,
-      ...state.grid,
-      rowSizes,
-      colSizes
+      gridId: state.grid._id,
+      grid: {
+        _id: state.grid._id,
+        rows: state.grid.rows,
+        cols: state.grid.cols,
+        rowSizes: pending.rowSizes ?? rowSizes,
+        colSizes: pending.colSizes ?? colSizes
+      }
     });
+
+    // reset
+    resizePendingRef.current = { rowSizes: null, colSizes: null };
   };
 
+  const getGridWidth = () => gridRef.current?.clientWidth || 1;
+  const getGridHeight = () => gridRef.current?.clientHeight || 1;
+
+  /* ------------------------------------------------------------
+      RESIZE COLUMN — NO SAVING INSIDE DRAG
+  ------------------------------------------------------------ */
   const resizeColumn = (i, pixelDelta) => {
     const gridWidth = getGridWidth();
     setColSizes((sizes) => {
@@ -276,17 +280,19 @@ console.log("VISIBLE PANELS:", visiblePanels);
       const frDelta = (pixelDelta / gridWidth) * total;
 
       const copy = [...sizes];
-      copy[i] += frDelta;
-      copy[next] -= frDelta;
+      copy[i] = Math.max(0.3, copy[i] + frDelta);
+      copy[next] = Math.max(0.3, copy[next] - frDelta);
 
-      copy[i] = Math.max(0.3, copy[i]);
-      copy[next] = Math.max(0.3, copy[next]);
+      // ★ store in pending
+      resizePendingRef.current.colSizes = copy;
 
-      saveGridSizes(rowSizes, copy);
       return copy;
     });
   };
 
+  /* ------------------------------------------------------------
+      RESIZE ROW — NO SAVING INSIDE DRAG
+  ------------------------------------------------------------ */
   const resizeRow = (i, pixelDelta) => {
     const gridHeight = getGridHeight();
     setRowSizes((sizes) => {
@@ -297,33 +303,21 @@ console.log("VISIBLE PANELS:", visiblePanels);
       const frDelta = (pixelDelta / gridHeight) * total;
 
       const copy = [...sizes];
-      copy[i] += frDelta;
-      copy[next] -= frDelta;
+      copy[i] = Math.max(0.3, copy[i] + frDelta);
+      copy[next] = Math.max(0.3, copy[next] - frDelta);
 
-      copy[i] = Math.max(0.3, copy[i]);
-      copy[next] = Math.max(0.3, copy[next]);
+      // ★ store pending
+      resizePendingRef.current.rowSizes = copy;
 
-      saveGridSizes(copy, colSizes);
       return copy;
     });
   };
 
-  const getClientX = (e) =>
-    e.touches ? e.touches[0].clientX : e.clientX;
-  const getClientY = (e) =>
-    e.touches ? e.touches[0].clientY : e.clientY;
-
-  const getColPosition = (i) => {
-    const total = colSizes.reduce((a, b) => a + b, 0);
-    const before = colSizes.slice(0, i + 1).reduce((a, b) => a + b, 0);
-    return (before / total) * 100;
-  };
-
-  const getRowPosition = (i) => {
-    const total = rowSizes.reduce((a, b) => a + b, 0);
-    const before = rowSizes.slice(0, i + 1).reduce((a, b) => a + b, 0);
-    return (before / total) * 100;
-  };
+  /* ------------------------------------------------------------
+      RESIZE HANDLERS — SAVE ON STOP
+  ------------------------------------------------------------ */
+  const getClientX = (e) => (e.touches ? e.touches[0].clientX : e.clientX);
+  const getClientY = (e) => (e.touches ? e.touches[0].clientY : e.clientY);
 
   const startColResize = (e, i) => {
     e.preventDefault();
@@ -342,6 +336,8 @@ console.log("VISIBLE PANELS:", visiblePanels);
       window.removeEventListener("mouseup", stop);
       window.removeEventListener("touchmove", move);
       window.removeEventListener("touchend", stop);
+
+      finalizeResize(); // ★ SAVE HERE ONLY
     };
 
     window.addEventListener("mousemove", move);
@@ -367,6 +363,8 @@ console.log("VISIBLE PANELS:", visiblePanels);
       window.removeEventListener("mouseup", stop);
       window.removeEventListener("touchmove", move);
       window.removeEventListener("touchend", stop);
+
+      finalizeResize(); // ★ SAVE HERE ONLY
     };
 
     window.addEventListener("mousemove", move);
@@ -375,9 +373,12 @@ console.log("VISIBLE PANELS:", visiblePanels);
     window.addEventListener("touchend", stop);
   };
 
+  if (!grid?._id) return <div>Loading grid…</div>;
+
   /* ------------------------------------------------------------
-     RENDER
+      RENDER
   ------------------------------------------------------------ */
+
   return (
     <DndContext
       sensors={sensors}
@@ -495,11 +496,11 @@ console.log("VISIBLE PANELS:", visiblePanels);
           <PanelClone panel={getPanel(activeId)} />
         ) : null}
 
-        {!getPanel(activeId) && activeData ? (
-          renderDragOverlay({
+        {!getPanel(activeId) && activeData
+          ? renderDragOverlay({
             active: { id: activeId, data: { current: activeData } }
           })
-        ) : null}
+          : null}
       </DragOverlay>
     </DndContext>
   );

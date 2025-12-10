@@ -13,12 +13,9 @@ import TrashIcon from "@atlaskit/icon/glyph/trash";
 
 import { ScheduleContext } from "./ScheduleContext";
 
-export default function SortableItem({
-    instanceId,
-    isDragPreview = false
-}) {
-    const { state, instanceStoreRef, editItem, deleteItem, anyDragging } =
-        useContext(ScheduleContext);
+const SortableItem = ({ instanceId, isDragPreview = false }) => {
+  const { state, instanceStoreRef, editItem, deleteItem, anyDragging } =
+    useContext(ScheduleContext);
 
     const inst = state.instances[instanceId] || {};
     const [collapsed, setCollapsed] = useState(true);
@@ -82,7 +79,7 @@ export default function SortableItem({
         display: "flex",
         alignItems: "center",
         fontSize: 14,
-        touchAction: "none"
+        touchAction: "manipulation"
     };
 
     // ---------------------------------------------------
@@ -291,3 +288,4 @@ export default function SortableItem({
         </div>
     );
 }
+export default React.memo(SortableItem);

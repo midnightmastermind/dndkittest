@@ -131,7 +131,9 @@ export default function App() {
       role: over.data.current?.role,
       container: over.data.current?.containerId
     });
-    if (!instId || !to) return;
+    const role = over.data.current?.role;
+
+    if (!instId || !to || !role) return;
 
     // Start from preview if available, otherwise real state
     const base = previewContainersRef.current || containers;
@@ -146,7 +148,6 @@ export default function App() {
       next[to] = [];
     }
     // If not already in the hovered container, append it
-    const role = over.data.current?.role;
 
     // TOP: Insert at index 0
     if (role === "taskbox-top") {
