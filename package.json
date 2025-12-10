@@ -1,50 +1,13 @@
 {
-  "name": "atlassian-grid",
-  "version": "0.1.0",
+  "name": "grid-root",
+  "version": "1.0.0",
   "private": true,
-  "dependencies": {
-    "@atlaskit/button": "^23.6.3",
-    "@atlaskit/css-reset": "^7.3.9",
-    "@atlaskit/popup": "^4.6.4",
-    "@atlaskit/pragmatic-drag-and-drop": "^1.7.7",
-    "@atlaskit/textfield": "^8.1.0",
-    "@atlaskit/theme": "^21.0.2",
-    "@atlaskit/tokens": "^8.4.0",
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/modifiers": "^9.0.0",
-    "@dnd-kit/sortable": "^10.0.0",
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^13.5.0",
-    "framer-motion": "^12.23.24",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1",
-    "web-vitals": "^2.1.4"
-  },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "start": "concurrently \"npm run start:client\" \"npm run start:server\"",
+    "start:client": "npm --prefix ./client start",
+    "start:server": "npm --prefix ./server run dev"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+  "devDependencies": {
+    "concurrently": "^8.2.1"
   }
 }
