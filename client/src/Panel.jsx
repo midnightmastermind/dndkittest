@@ -270,7 +270,7 @@ export default function Panel({
         </div>
 
         {/* PANEL CONTENT */}
-        <div className={"schedule-panel"} style={{ flex: 1, minHeight: 0, color: "white", margin: 5 }}>
+        <div style={{ flex: 1, minHeight: 0, color: "white", margin: 5 }}>
           {RenderedComponent && (
             <RenderedComponent
               {...panel.props}

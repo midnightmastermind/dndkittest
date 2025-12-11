@@ -1,6 +1,6 @@
-// TaskBox.jsx — CLEAN & FIXED (with LIST DROPPABLE wrapper)
+// TaskBox.jsx — CLEAN & DEBUGGED
 
-import React, { useContext } from "react";
+import React, { useContext, useEffect } from "react";
 import {
   SortableContext,
   verticalListSortingStrategy
@@ -30,23 +30,24 @@ export default function TaskBox({ containerId, disabled }) {
 
   // Filter out missing instances
   const safeInstanceIds = instanceIds.filter(
-    id => instanceStoreRef.current[id]
+    (id) => instanceStoreRef.current[id]
   );
+
 
   // -------------------------------
   // ⭐ TOP drop zone
   // -------------------------------
   const { setNodeRef: setTopDrop } = useDroppable({
     id: `${containerId}-top`,
-    data: { role: "taskbox-top", containerId }
+    data: { role: "taskbox:top", containerId }
   });
 
   // -------------------------------
-  // ⭐ LIST drop zone (CRITICAL FIX)
+  // ⭐ LIST drop zone
   // -------------------------------
   const { setNodeRef: setListDrop } = useDroppable({
-    id: `${containerId}-list`,
-    data: { role: "taskbox-list", containerId }
+    id: containerId,
+    data: { role: "taskbox:list", containerId }
   });
 
   // -------------------------------
@@ -54,8 +55,10 @@ export default function TaskBox({ containerId, disabled }) {
   // -------------------------------
   const { setNodeRef: setBottomDrop } = useDroppable({
     id: `${containerId}-bottom`,
-    data: { role: "taskbox-bottom", containerId }
+    data: { role: "taskbox:bottom", containerId }
   });
+
+
 
   // -------------------------------
   // Add Task
@@ -79,6 +82,8 @@ export default function TaskBox({ containerId, disabled }) {
     emit("update_container", { gridId, containerId, items: next });
   };
 
+
+
   return (
     <div
       className="taskbox"
@@ -88,7 +93,8 @@ export default function TaskBox({ containerId, disabled }) {
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        overflowY: "auto"
+        overflowY: "auto",
+        overflowX: "hidden"
       }}
     >
       {/* ⭐ THIN TOP DROPPABLE */}
@@ -100,15 +106,14 @@ export default function TaskBox({ containerId, disabled }) {
         }}
       />
 
-      {/* ⭐ LIST DROPPABLE WRAPPER (prevents flicker!) */}
+      {/* ⭐ LIST DROPPABLE WRAPPER */}
       <div
         ref={setListDrop}
         style={{
           width: "100%",
-          pointerEvents: "none",
+          pointerEvents: "auto",
           display: "flex",
           flexDirection: "column",
-          gap: "3px"
         }}
       >
         <SortableContext
@@ -117,7 +122,7 @@ export default function TaskBox({ containerId, disabled }) {
           strategy={verticalListSortingStrategy}
           disabled={disabled}
         >
-          {safeInstanceIds.map(instId => {
+          {safeInstanceIds.map((instId, index) => {
             const inst = instanceStoreRef.current[instId];
             if (!inst) return null;
 

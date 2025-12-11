@@ -10,23 +10,23 @@ import Popup from "@atlaskit/popup";
 import Textfield from "@atlaskit/textfield";
 import EditIcon from "@atlaskit/icon/glyph/edit";
 import TrashIcon from "@atlaskit/icon/glyph/trash";
-
 import { ScheduleContext } from "./ScheduleContext";
 
-const SortableItem = ({ instanceId, isDragPreview = false }) => {
-  const { state, instanceStoreRef, editItem, deleteItem, anyDragging } =
-    useContext(ScheduleContext);
+const SortableItem = ({ instanceId, containerId, isDragPreview = false }) => {
+    const { state, instanceStoreRef, editItem, deleteItem, anyDragging } =
+        useContext(ScheduleContext);
 
     const inst = state.instances[instanceId] || {};
     const [collapsed, setCollapsed] = useState(true);
-    const containerId = Object.keys(state.containers).find(
-        cid => state.containers[cid].includes(instanceId)
-    );
+
+    // 🔒 We now TRUST the containerId prop instead of scanning global state.
+    // If it ever ends up undefined, we just bail on drag data instead of guessing.
     const {
         label = "Untitled",
         children: rawChildren,
         childrenSortable = false
     } = inst;
+
 
     const children = Array.isArray(rawChildren) ? rawChildren : [];
 
@@ -47,7 +47,7 @@ const SortableItem = ({ instanceId, isDragPreview = false }) => {
     } = useSortable({
         id: instanceId,
         disabled: sortableDisabled,
-        data: { type: "task", instanceId, containerId }
+        data: { type: "task", role: "task", instanceId, containerId }
     });
 
     React.useEffect(() => {
@@ -66,9 +66,11 @@ const SortableItem = ({ instanceId, isDragPreview = false }) => {
         transform: CSS.Transform.toString(transform),
         transition,
         width: "100%",
+        maxWidth: isDragPreview ? "300px" : "unset",
         opacity: isDragging ? 0.5 : 1,
         pointerEvents: "auto",
-        touchAction: "none"
+        touchAction: "none",
+        padding: 3
     };
 
     const rowStyle = {
@@ -108,10 +110,21 @@ const SortableItem = ({ instanceId, isDragPreview = false }) => {
         instanceStoreRef.current[instanceId].collapsed = !collapsed;
         setCollapsed(!collapsed);
     };
+console.log(
+  "%c[SORTABLE ITEM RENDER]",
+  "color:#09f;font-weight:bold;",
+  instanceId,
+  {
+    containerId,
+    dndId: instanceId,
+    nodeRefAttached: !!setNodeRef
+  }
+);
 
     return (
         <div
             ref={setNodeRef}
+            data-sortable-id={instanceId}    // ⭐ REQUIRED FOR POINTER INSERTION
             style={wrapperStyle}
         >
             {/* Parent row */}

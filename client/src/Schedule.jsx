@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useRef, useLayoutEffect } from "react";
 import { ScheduleContext } from "./ScheduleContext";
 import {
   SortableContext,
@@ -26,12 +26,21 @@ function generateSlots(containerId) {
 const Schedule = ({ containerId, disabled }) => {
   const { state, previewContainersRef } = useContext(ScheduleContext);
 
-  // ⭐ MEMOIZED containerMap to avoid re-render storm
+  // ⭐ Track visible scrollable bounds for clipping
+  const scrollRef = useRef(null);
+  const visibleBoundsRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    visibleBoundsRef.current = { top: rect.top, bottom: rect.bottom };
+  });
+
+  // ⭐ Choose preview or real container map
   const containerMap = React.useMemo(() => {
-    if (
-      previewContainersRef.current &&
-      typeof previewContainersRef.current === "object"
-    ) {
+    if (previewContainersRef.current && typeof previewContainersRef.current === "object") {
       return previewContainersRef.current;
     }
     return state.containers;
@@ -41,13 +50,15 @@ const Schedule = ({ containerId, disabled }) => {
 
   return (
     <div
+      ref={scrollRef}
+      className="schedule-scroll"
       style={{
         width: "100%",
         height: "100%",
         overflowY: "auto",
+        overflowX: "hidden",
         display: "flex",
         flexDirection: "column",
-        gap: 5
       }}
     >
       {slots.map((slot) => {
@@ -60,57 +71,85 @@ const Schedule = ({ containerId, disabled }) => {
             label={slot.label}
             disabled={disabled}
             instanceIds={instanceIds}
+            panelBounds={visibleBoundsRef}  // ⭐ PASSED DOWN
           />
         );
       })}
     </div>
   );
-}
+};
+
+
 const Slot = React.memo(
-  ({ slotId, label, instanceIds, disabled }) => {
-    const { setNodeRef } = useDroppable({
+  ({ slotId, label, instanceIds, disabled, panelBounds }) => {
+    // ⭐ TOP
+    const { setNodeRef: setTopDrop } = useDroppable({
+      id: `${slotId}-top`,
+      data: { role: `schedule:top`, containerId: slotId,  panelBounds: panelBounds.current  }
+    });
+    // ⭐ Primary droppable zone with clipping metadata
+    const { setNodeRef: setListDrop } = useDroppable({
       id: slotId,
       data: {
         type: "slot",
         containerId: slotId,
-        role: "schedule-list"
+        role: "schedule:list",
+        panelBounds: panelBounds.current   // ⭐ CRITICAL FOR CLIPPING
       },
       disabled
     });
-
+    // ⭐ BOTTOM
+    const { setNodeRef: setBottomDrop } = useDroppable({
+      id: `${slotId}-bottom`,
+      data: { role: `schedule:bottom`, containerId: slotId,  panelBounds: panelBounds.current }
+    });
     return (
       <div
-        ref={setNodeRef}
         className="schedule"
         data-role="schedule"
         data-containerid={slotId}
         style={{
           background: "#2D333B",
           border: "1px solid #444",
-          padding: 6,
-          borderRadius: 6
+          borderRadius: 6,
+          pointerEvents: "auto",
+          marginBottom: 5
         }}
       >
-        <div style={{ color: "#9AA0A6", fontSize: 12, marginBottom: 4 }}>
+        <div
+          ref={setTopDrop}
+          style={{
+            color: "#9AA0A6",
+            fontSize: 12,
+            padding: "2px 4px",
+            borderRadius: 4,
+            pointerEvents: "auto"
+          }}
+        >
           {label}
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+        <div
+          ref={setListDrop}
+          style={{
+            pointerEvents: "auto",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           <SortableContext
             id={slotId}
             items={instanceIds}
             strategy={verticalListSortingStrategy}
             disabled={disabled}
-            data={{
-              role: "task-container",
-              containerId: slotId
-            }}
           >
             {instanceIds.map((id) => (
               <SortableItem key={id} instanceId={id} containerId={slotId} />
             ))}
           </SortableContext>
         </div>
+        <div ref={setBottomDrop} style={{ height: 10, pointerEvents: "auto"}} />
+
       </div>
     );
   },
@@ -119,7 +158,6 @@ const Slot = React.memo(
     prev.disabled === next.disabled &&
     prev.instanceIds === next.instanceIds
 );
-
 
 export default Schedule;
 export { Slot };

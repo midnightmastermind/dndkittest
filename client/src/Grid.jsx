@@ -27,7 +27,7 @@ function CellDroppable({ r, c, dark }) {
 
   const { setNodeRef, isOver } = useDroppable({
     id: `cell-${r}-${c}`,
-    data: { role: "grid-cell", row: r, col: c }
+    data: { role: "grid:cell", row: r, col: c }
   });
 
   const highlight = isPanelDrag && isOver;
@@ -42,44 +42,195 @@ function CellDroppable({ r, c, dark }) {
             ? "#22272B"
             : "#2C333A",
         border: "1px solid #3F444A",
-        transition: "background 80ms"
+        transition: "background 80ms",
+        pointerEvents: "auto",
       }}
     />
   );
 }
-
-
-
 function smartCollisionDetection(args) {
-  const collisions = pointerWithin(args);
+  const {
+    active,
+    droppableRects,
+    droppableContainers,
+    pointerCoordinates
+  } = args;
 
-  // Pointer position
-  const x = args.pointerCoordinates?.x ?? 0;
-  const y = args.pointerCoordinates?.y ?? 0;
+  console.log("\n--- SMART COLLISION ---");
 
-  return collisions.filter((collision) => {
-    const id = collision.id;
+  if (!active?.data?.current || !pointerCoordinates) {
+    console.log("❌ No active or pointer");
+    return [];
+  }
 
-    // Find the DOM node
-    const el = document.querySelector(`[data-id="${id}"]`);
-    if (!el) return true; // keep other droppables
+  const activeRole = active.data.current.role;
+  const px = pointerCoordinates.x;
+  const py = pointerCoordinates.y;
+  // Step 0 — If pointer hits a grid cell, return ONLY that
+  for (const container of droppableContainers) {
+    const data = container.data?.current;
+    if (data?.role !== "grid:cell") continue;
 
-    // Only special-filter Schedule panels
-    const isSchedule = el.classList.contains("schedule-panel");
-    if (!isSchedule) return true; // don't block anything else
+    const rect = droppableRects.get(container.id);
+    if (!rect) continue;
 
-    const rect = el.getBoundingClientRect();
-
-    // Must be inside the visible region to count as "over"
     const inside =
-      x >= rect.left &&
-      x <= rect.right &&
-      y >= rect.top &&
-      y <= rect.bottom;
+      px >= rect.left && px <= rect.right &&
+      py >= rect.top && py <= rect.bottom;
 
-    return inside;
+    if (inside) {
+      // 🔥 Return ONLY the grid cell — block everything else
+      return [{ id: container.id, rect, role: "grid:cell" }];
+    }
+  }
+
+  console.log("Active role:", activeRole, "Pointer:", px, py);
+
+  const hits = [];
+
+  // ------------------------------------------------------------
+  // VALIDATION — Which targets are allowed
+  // ------------------------------------------------------------
+  function isValid(activeRole, targetRole) {
+    if (!targetRole) return false;
+
+    if (activeRole === "panel") {
+      return targetRole === "grid:cell";
+    }
+
+    if (activeRole === "task") {
+      return targetRole !== "grid:cell";
+    }
+
+    return false;
+  }
+
+  // ------------------------------------------------------------
+  // PASS 1 — Expand schedule:list hitboxes for tasks
+  // ------------------------------------------------------------
+  const expandedRects = new Map();
+  const entries = [...droppableRects.entries()];
+
+  for (let i = 0; i < entries.length; i++) {
+    const [id, rect] = entries[i];
+    const data = droppableContainers[i]?.data?.current;
+    const role = data?.role;
+
+    if (data?.sortable) {
+      expandedRects.set(id, rect);
+      continue;
+    }
+
+    if (role?.endsWith(":top") || role?.endsWith(":bottom")) {
+      expandedRects.set(id, rect);
+      continue;
+    }
+
+    if (role === "schedule:list" && activeRole === "task") {
+      const above = entries[i - 1]?.[1];
+      const below = entries[i + 1]?.[1];
+
+      const top = above ? (above.bottom + rect.top) / 2 : rect.top;
+      const bottom = below ? (below.top + rect.bottom) / 2 : rect.bottom;
+
+      expandedRects.set(id, {
+        ...rect,
+        top,
+        bottom,
+        height: bottom - top
+      });
+      continue;
+    }
+
+    expandedRects.set(id, rect);
+  }
+
+  // ------------------------------------------------------------
+  // PASS 2 — Hit Testing
+  // ------------------------------------------------------------
+
+  for (const container of droppableContainers) {
+    const id = container.id;
+    const data = container.data?.current;
+    const role = data?.role;
+
+    const rect = expandedRects.get(id);
+    if (!rect) continue;
+
+    if (!isValid(activeRole, role)) {
+      continue;
+    }
+
+    // NEW: reject schedule hits if pointer is above/below scroll panel
+    if (data?.panelBounds) {
+      const { top: pTop, bottom: pBottom } = data.panelBounds;
+
+      if (py < pTop || py > pBottom) {
+        continue;
+      }
+    }
+
+    let clipped = { ...rect };
+
+    if (data?.panelBounds) {
+      const { top, bottom } = data.panelBounds;
+
+      clipped.top = Math.max(clipped.top, top);
+      clipped.bottom = Math.min(clipped.bottom, bottom);
+      clipped.height = clipped.bottom - clipped.top;
+
+      if (clipped.height <= 0) {
+        continue;
+      }
+    }
+
+    const inside =
+      px >= clipped.left &&
+      px <= clipped.right &&
+      py >= clipped.top &&
+      py <= clipped.bottom;
+
+
+    if (inside) hits.push({ id, rect: clipped, role });
+  }
+
+  // ------------------------------------------------------------
+  // ⭐ NEW FIX — If dragging a TASK and pointer overlaps ANY grid cell,
+  // FORCE grid hit and ignore schedule completely.
+  // ------------------------------------------------------------
+  if (activeRole === "task") {
+    const gridCellHit = hits.find((h) => h.role === "grid:cell");
+    if (gridCellHit) {
+      return [gridCellHit];
+    }
+  }
+
+  // ------------------------------------------------------------
+  // PASS 3 — Prioritize hits depending on drag type
+  // ------------------------------------------------------------
+
+  hits.sort((a, b) => {
+    const ra = a.role;
+    const rb = b.role;
+
+
+    if (activeRole === "task") {
+      if (ra === "schedule:list" && rb === "grid:cell") return -1;
+      if (rb === "schedule:list" && ra === "grid:cell") return 1;
+    }
+
+    if (activeRole === "panel") {
+      if (ra === "grid:cell" && rb !== "grid:cell") return -1;
+      if (rb === "grid:cell" && ra !== "grid:cell") return 1;
+    }
+
+    return 0;
   });
+
+
+  return hits;
 }
+
 /* ------------------------------------------------------------
    GRID COMPONENT — FINAL VERSION USING CONTEXT
 ------------------------------------------------------------ */
@@ -210,22 +361,22 @@ export default function Grid({
   /* ------------------------------------------------------------
       🔥 DRAG MOVE — Smooth panel transform
   ------------------------------------------------------------ */
-  const handleDragMove = (event) => {
-    const data = event.active.data.current;
-    if (data?.role !== "panel") {
-      handleDragOverProp(event);
-      return;
-    }
+const handleDragMove = (event) => {
+  const data = event.active.data.current;
 
-    const p = document.querySelector(`[data-panel-id='${data.panelId}']`);
-    if (p) {
-      p.style.transition = "none";
-      p.style.transform = `translate(${event.delta.x}px, ${event.delta.y}px)`;
-    }
+  // 👇 Tasks: do nothing here, let onDragOver drive preview/sorting
+  if (!data || data.role !== "panel") return;
 
-    panelDragLiveRef.current.dx = event.delta.x;
-    panelDragLiveRef.current.dy = event.delta.y;
-  };
+  // Panels: smooth transform while dragging
+  const p = document.querySelector(`[data-panel-id='${data.panelId}']`);
+  if (p) {
+    p.style.transition = "none";
+    p.style.transform = `translate(${event.delta.x}px, ${event.delta.y}px)`;
+  }
+
+  panelDragLiveRef.current.dx = event.delta.x;
+  panelDragLiveRef.current.dy = event.delta.y;
+};
 
   /* ------------------------------------------------------------
       SANITIZE PLACEMENT
@@ -539,8 +690,8 @@ export default function Grid({
 
         {!getPanel(activeId) && activeData
           ? renderDragOverlay({
-              active: { id: activeId, data: { current: activeData } }
-            })
+            active: { id: activeId, data: { current: activeData } }
+          })
           : null}
       </DragOverlay>
     </DndContext>
