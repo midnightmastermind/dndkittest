@@ -70,7 +70,7 @@ const SortableItem = ({ instanceId, containerId, isDragPreview = false }) => {
         opacity: isDragging ? 0.5 : 1,
         pointerEvents: "auto",
         touchAction: "none",
-        padding: 3
+        paddingBottom: 3
     };
 
     const rowStyle = {

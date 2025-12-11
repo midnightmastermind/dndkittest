@@ -53,7 +53,7 @@ function smartCollisionDetection(args) {
     active,
     droppableRects,
     droppableContainers,
-    pointerCoordinates
+    pointerCoordinates,
   } = args;
 
   console.log("\n--- SMART COLLISION ---");
@@ -66,23 +66,6 @@ function smartCollisionDetection(args) {
   const activeRole = active.data.current.role;
   const px = pointerCoordinates.x;
   const py = pointerCoordinates.y;
-  // Step 0 — If pointer hits a grid cell, return ONLY that
-  for (const container of droppableContainers) {
-    const data = container.data?.current;
-    if (data?.role !== "grid:cell") continue;
-
-    const rect = droppableRects.get(container.id);
-    if (!rect) continue;
-
-    const inside =
-      px >= rect.left && px <= rect.right &&
-      py >= rect.top && py <= rect.bottom;
-
-    if (inside) {
-      // 🔥 Return ONLY the grid cell — block everything else
-      return [{ id: container.id, rect, role: "grid:cell" }];
-    }
-  }
 
   console.log("Active role:", activeRole, "Pointer:", px, py);
 
@@ -99,6 +82,7 @@ function smartCollisionDetection(args) {
     }
 
     if (activeRole === "task") {
+      // tasks can hit *anything* except grid cells
       return targetRole !== "grid:cell";
     }
 
@@ -137,7 +121,7 @@ function smartCollisionDetection(args) {
         ...rect,
         top,
         bottom,
-        height: bottom - top
+        height: bottom - top,
       });
       continue;
     }
@@ -146,9 +130,8 @@ function smartCollisionDetection(args) {
   }
 
   // ------------------------------------------------------------
-  // PASS 2 — Hit Testing
+  // PASS 2 — Hit Testing (with optional clipping to panelBounds)
   // ------------------------------------------------------------
-
   for (const container of droppableContainers) {
     const id = container.id;
     const data = container.data?.current;
@@ -157,26 +140,21 @@ function smartCollisionDetection(args) {
     const rect = expandedRects.get(id);
     if (!rect) continue;
 
-    if (!isValid(activeRole, role)) {
-      continue;
-    }
-
-    // NEW: reject schedule hits if pointer is above/below scroll panel
-    if (data?.panelBounds) {
-      const { top: pTop, bottom: pBottom } = data.panelBounds;
-
-      if (py < pTop || py > pBottom) {
-        continue;
-      }
-    }
+    if (!isValid(activeRole, role)) continue;
 
     let clipped = { ...rect };
 
+    // 🔥 Clip to visible scroll bounds if present
     if (data?.panelBounds) {
-      const { top, bottom } = data.panelBounds;
+      const { top: pTop, bottom: pBottom } = data.panelBounds;
 
-      clipped.top = Math.max(clipped.top, top);
-      clipped.bottom = Math.min(clipped.bottom, bottom);
+      // Ignore if pointer is outside the schedule panel vertically
+      if (py < pTop || py > pBottom) {
+        continue;
+      }
+
+      clipped.top = Math.max(clipped.top, pTop);
+      clipped.bottom = Math.min(clipped.bottom, pBottom);
       clipped.height = clipped.bottom - clipped.top;
 
       if (clipped.height <= 0) {
@@ -190,33 +168,46 @@ function smartCollisionDetection(args) {
       py >= clipped.top &&
       py <= clipped.bottom;
 
-
-    if (inside) hits.push({ id, rect: clipped, role });
-  }
-
-  // ------------------------------------------------------------
-  // ⭐ NEW FIX — If dragging a TASK and pointer overlaps ANY grid cell,
-  // FORCE grid hit and ignore schedule completely.
-  // ------------------------------------------------------------
-  if (activeRole === "task") {
-    const gridCellHit = hits.find((h) => h.role === "grid:cell");
-    if (gridCellHit) {
-      return [gridCellHit];
+    if (inside) {
+      hits.push({ id, rect: clipped, role });
     }
   }
 
   // ------------------------------------------------------------
-  // PASS 3 — Prioritize hits depending on drag type
+  // GRID-CELL SHORT-CIRCUIT
   // ------------------------------------------------------------
+  if (activeRole === "panel") {
+    const cellHit = hits.find((h) => h.role === "grid:cell");
+    if (cellHit) return [cellHit];
+  }
 
+  if (activeRole === "task") {
+    const filtered = hits.filter((h) => h.role !== "grid:cell");
+    if (filtered.length) {
+      return filtered;
+    }
+  }
+
+  // ------------------------------------------------------------
+  // PASS 3 — Prioritize specific items vs list wrappers
+  // ------------------------------------------------------------
   hits.sort((a, b) => {
     const ra = a.role;
     const rb = b.role;
 
-
     if (activeRole === "task") {
-      if (ra === "schedule:list" && rb === "grid:cell") return -1;
-      if (rb === "schedule:list" && ra === "grid:cell") return 1;
+      const isTaskA = ra === "task";
+      const isTaskB = rb === "task";
+
+      const isListA = typeof ra === "string" && ra.includes(":list");
+      const isListB = typeof rb === "string" && rb.includes(":list");
+
+      // Prefer concrete items over lists
+      if (isTaskA && !isTaskB) return -1;
+      if (isTaskB && !isTaskA) return 1;
+
+      if (isListA && !isListB) return -1;
+      if (isListB && !isListA) return 1;
     }
 
     if (activeRole === "panel") {
@@ -226,7 +217,6 @@ function smartCollisionDetection(args) {
 
     return 0;
   });
-
 
   return hits;
 }

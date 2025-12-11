@@ -185,7 +185,10 @@ const handleDragOver = ({ active, over }) => {
   if (!instId || !to || !role) return;
   if (role === "grid:cell") return;
 
-  const base = previewContainersRef.current || containers;
+  const base =
+  previewContainersRef.current
+    ? { ...state.containers, ...previewContainersRef.current }
+    : state.containers;
 
   // Remove instance from all containers
   let next = {};
@@ -219,7 +222,11 @@ const handleDragOver = ({ active, over }) => {
       return;
     }
   }
-
+console.log("%cSORTABLE CHECK",
+  "background:#900;color:#fff",
+  "preview:", next[to],
+  "actual:", state.containers[to]
+);
   // ----------------------------------------------
   // Existing top / bottom / list logic
   // ----------------------------------------------
@@ -282,7 +289,7 @@ console.log(
     setAnyDragging(false);
     console.log("drag end");
     console.log(over);
-
+    console.log(active);
     const instId = active.data.current?.instanceId;
 
 

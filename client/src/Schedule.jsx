@@ -1,12 +1,22 @@
-import React, { useContext, useRef, useLayoutEffect } from "react";
+// Schedule.jsx
+import React, {
+  useContext,
+  useRef,
+  useLayoutEffect,
+  useState,
+  useMemo,
+} from "react";
 import { ScheduleContext } from "./ScheduleContext";
 import {
   SortableContext,
-  verticalListSortingStrategy
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import SortableItem from "./SortableItem";
 
+/* ------------------------------------------------------------
+   TIME SLOTS
+------------------------------------------------------------ */
 function generateSlots(containerId) {
   const out = [];
   for (let h = 0; h < 24; h++) {
@@ -16,37 +26,68 @@ function generateSlots(containerId) {
 
       out.push({
         id: `${containerId}-${HH}:${MM}`,
-        label: `${HH}:${MM}`
+        label: `${HH}:${MM}`,
       });
     }
   }
   return out;
 }
 
+/* ------------------------------------------------------------
+   SCHEDULE
+------------------------------------------------------------ */
 const Schedule = ({ containerId, disabled }) => {
   const { state, previewContainersRef } = useContext(ScheduleContext);
 
-  // ⭐ Track visible scrollable bounds for clipping
   const scrollRef = useRef(null);
-  const visibleBoundsRef = useRef(null);
 
+  // 👇 This is what we pass into dnd-kit for clipping
+  const [panelBounds, setPanelBounds] = useState(null);
+
+  // 🔥 Measure once on mount + on scroll/resize.
+  //    IMPORTANT: dependency array is [] so this effect itself
+  //    does NOT loop; only real scroll/resize events call setState.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
-    const rect = el.getBoundingClientRect();
-    visibleBoundsRef.current = { top: rect.top, bottom: rect.bottom };
-  });
+    const updateBounds = () => {
+      const rect = el.getBoundingClientRect();
+      setPanelBounds((prev) => {
+        if (
+          prev &&
+          prev.top === rect.top &&
+          prev.bottom === rect.bottom
+        ) {
+          // No change → no state update → no extra renders
+          return prev;
+        }
+        return { top: rect.top, bottom: rect.bottom };
+      });
+    };
 
-  // ⭐ Choose preview or real container map
-  const containerMap = React.useMemo(() => {
-    if (previewContainersRef.current && typeof previewContainersRef.current === "object") {
-      return previewContainersRef.current;
-    }
-    return state.containers;
-  }, [state.containers, previewContainersRef.current]);
+    updateBounds(); // initial
 
-  const slots = generateSlots(containerId);
+    el.addEventListener("scroll", updateBounds);
+    window.addEventListener("resize", updateBounds);
+
+    return () => {
+      el.removeEventListener("scroll", updateBounds);
+      window.removeEventListener("resize", updateBounds);
+    };
+  }, []); // 🚨 DO NOT add `panelBounds` here
+
+  // Use preview containers during drag, real containers otherwise
+  const containerMap =
+    previewContainersRef.current &&
+    typeof previewContainersRef.current === "object"
+      ? previewContainersRef.current
+      : state.containers;
+
+  const slots = useMemo(
+    () => generateSlots(containerId),
+    [containerId]
+  );
 
   return (
     <div
@@ -71,7 +112,7 @@ const Schedule = ({ containerId, disabled }) => {
             label={slot.label}
             disabled={disabled}
             instanceIds={instanceIds}
-            panelBounds={visibleBoundsRef}  // ⭐ PASSED DOWN
+            panelBounds={panelBounds} // 👈 pass the current bounds
           />
         );
       })}
@@ -79,84 +120,111 @@ const Schedule = ({ containerId, disabled }) => {
   );
 };
 
+/* ------------------------------------------------------------
+   SLOT
+------------------------------------------------------------ */
+const Slot = React.memo(function Slot({
+  slotId,
+  label,
+  instanceIds,
+  disabled,
+  panelBounds,
+}) {
+  // TOP droppable
+  const { setNodeRef: setTopDrop } = useDroppable({
+    id: `${slotId}-top`,
+    data: {
+      role: "schedule:top",
+      containerId: slotId,
+      panelBounds,
+    },
+  });
 
-const Slot = React.memo(
-  ({ slotId, label, instanceIds, disabled, panelBounds }) => {
-    // ⭐ TOP
-    const { setNodeRef: setTopDrop } = useDroppable({
-      id: `${slotId}-top`,
-      data: { role: `schedule:top`, containerId: slotId,  panelBounds: panelBounds.current  }
-    });
-    // ⭐ Primary droppable zone with clipping metadata
-    const { setNodeRef: setListDrop } = useDroppable({
-      id: slotId,
-      data: {
-        type: "slot",
-        containerId: slotId,
-        role: "schedule:list",
-        panelBounds: panelBounds.current   // ⭐ CRITICAL FOR CLIPPING
-      },
-      disabled
-    });
-    // ⭐ BOTTOM
-    const { setNodeRef: setBottomDrop } = useDroppable({
-      id: `${slotId}-bottom`,
-      data: { role: `schedule:bottom`, containerId: slotId,  panelBounds: panelBounds.current }
-    });
-    return (
+  // MAIN LIST droppable
+  const { setNodeRef: setListDrop } = useDroppable({
+    id: slotId,
+    data: {
+      role: "schedule:list",
+      containerId: slotId,
+      panelBounds,
+    },
+    disabled,
+  });
+
+  // BOTTOM droppable
+  const { setNodeRef: setBottomDrop } = useDroppable({
+    id: `${slotId}-bottom`,
+    data: {
+      role: "schedule:bottom",
+      containerId: slotId,
+      panelBounds,
+    },
+  });
+
+  return (
+    <div
+      className="schedule"
+      data-role="schedule"
+      data-containerid={slotId}
+      style={{
+        background: "#2D333B",
+        border: "1px solid #444",
+        borderRadius: 6,
+        pointerEvents: "auto",
+        marginBottom: 5,
+      }}
+    >
+      {/* Time label / top droppable */}
       <div
-        className="schedule"
-        data-role="schedule"
-        data-containerid={slotId}
+        ref={setTopDrop}
         style={{
-          background: "#2D333B",
-          border: "1px solid #444",
-          borderRadius: 6,
+          color: "#9AA0A6",
+          fontSize: 12,
+          padding: "2px 4px",
+          borderRadius: 4,
           pointerEvents: "auto",
-          marginBottom: 5
         }}
       >
-        <div
-          ref={setTopDrop}
-          style={{
-            color: "#9AA0A6",
-            fontSize: 12,
-            padding: "2px 4px",
-            borderRadius: 4,
-            pointerEvents: "auto"
-          }}
-        >
-          {label}
-        </div>
-
-        <div
-          ref={setListDrop}
-          style={{
-            pointerEvents: "auto",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <SortableContext
-            id={slotId}
-            items={instanceIds}
-            strategy={verticalListSortingStrategy}
-            disabled={disabled}
-          >
-            {instanceIds.map((id) => (
-              <SortableItem key={id} instanceId={id} containerId={slotId} />
-            ))}
-          </SortableContext>
-        </div>
-        <div ref={setBottomDrop} style={{ height: 10, pointerEvents: "auto"}} />
-
+        {label}
       </div>
-    );
-  },
-  (prev, next) =>
-    prev.slotId === next.slotId &&
-    prev.disabled === next.disabled &&
-    prev.instanceIds === next.instanceIds
+
+      {/* Main list area */}
+      <div
+        ref={setListDrop}
+        style={{
+          pointerEvents: "auto",
+          display: "flex",
+          flexDirection: "column",
+          margin: "0px 5px",
+        }}
+      >
+        <SortableContext
+          id={slotId}
+          items={instanceIds}
+          strategy={verticalListSortingStrategy}
+          disabled={disabled}
+        >
+          {instanceIds.map((id) => (
+            <SortableItem key={id} instanceId={id} containerId={slotId} />
+          ))}
+        </SortableContext>
+      </div>
+
+      {/* Bottom spacer droppable */}
+      <div
+        ref={setBottomDrop}
+        style={{ height: 10, pointerEvents: "auto" }}
+      />
+    </div>
+  );
+},
+// Memo: only re-render a slot if its key props actually change
+(prev, next) =>
+  prev.slotId === next.slotId &&
+  prev.disabled === next.disabled &&
+  prev.instanceIds === next.instanceIds &&
+  prev.panelBounds?.top === next.panelBounds?.top &&
+  prev.panelBounds?.bottom === next.panelBounds?.bottom
 );
 
 export default Schedule;
