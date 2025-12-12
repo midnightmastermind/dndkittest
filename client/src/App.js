@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import Textfield from "@atlaskit/textfield";
 import Button from "@atlaskit/button";
-
+import { Label } from '@atlaskit/form';
 import Grid from "./Grid";
 import TaskBox from "./TaskBox";
 import Schedule from "./Schedule";
@@ -33,7 +33,20 @@ export default function App() {
   // 🔥 REDUCER STATE
   // ----------------------------------------------------------
   const { state, dispatch } = useBoardState();
-  const { gridId, instances, containers, panels, grid } = state;
+  const { gridId, instances, containers, panels, grid, availableGrids = [] } = state;
+  // Local state for grid name input
+  const [gridName, setGridName] = useState("");
+  const [rowInput, setRowInput] = useState(String(grid.rows || 1));
+  const [colInput, setColInput] = useState(String(grid.cols || 1));
+  // Keep gridName in sync when a new grid loads
+  useEffect(() => {
+    if (grid) {
+      setGridName(grid.name || "");
+    } else {
+      setGridName("");
+    }
+  }, [grid?._id]); // re-run when we switch grids
+
 
   // ----------------------------------------------------------
   // SOCKET → STORE
@@ -56,7 +69,13 @@ export default function App() {
     // If NOT logged in → show login UI
   }, []);
 
-
+  // Keep them in sync when grid changes
+  useEffect(() => {
+    if (grid) {
+      setRowInput(String(grid.rows ?? 1));
+      setColInput(String(grid.cols ?? 1));
+    }
+  }, [grid?._id, grid?.rows, grid?.cols]);
   // ----------------------------------------------------------
   // INSTANCE STORE REF (for Sortable + nested logic)
   // ----------------------------------------------------------
@@ -86,24 +105,26 @@ export default function App() {
   const activeRef = useRef(null);
   // Wait for hydration
 
-  // ----------------------------------------------------------
-  // ⭐ DRAG START — reset preview, store origin container
-  // ----------------------------------------------------------
-  const handleDragStart = ({ active }) => {
-    // Reset preview-on-drag-over
-    previewContainersRef.current = null;
+ // ----------------------------------------------------------
+// ⭐ DRAG START — set up stable preview snapshot
+// ----------------------------------------------------------
+const handleDragStart = ({ active }) => {
+  // Instead of null -> flip-flopping source for TaskBox,
+  // take a snapshot of current containers ONCE per drag.
+  previewContainersRef.current = { ...state.containers };
 
-    // Visual flag for disabling popups, collapse, etc.
-    setAnyDragging(true);
+  // Visual flag for disabling popups, collapse, etc.
+  setAnyDragging(true);
 
-    const data = active?.data?.current || {};
+  const data = active?.data?.current || {};
 
-    // Store instance + origin container for drop logic
-    activeRef.current = {
-      instanceId: data.instanceId,
-      fromContainerId: data.containerId
-    };
+  // Store instance + origin container for drop logic
+  activeRef.current = {
+    instanceId: data.instanceId,
+    fromContainerId: data.containerId
   };
+};
+
 
   const isTop = (role) => role?.endsWith(":top");
   const isBottom = (role) => role?.endsWith(":bottom");
@@ -124,135 +145,79 @@ export default function App() {
   // ----------------------------------------------------------
   // ⭐ DRAG OVER — build temporary preview ordering ONLY
   // ----------------------------------------------------------
-const handleDragOver = ({ active, over }) => {
-  console.log(
-    "%c[OVER]",
-    "background:#222;color:#0f0;font-weight:bold;padding:2px 5px;border-radius:4px;"
-  );
-  
-  if (!active || !over) {
-    console.log("❌ active or over missing");
-    return;
-  }
+ const handleDragOver = ({ active, over }) => {
+  if (!active || !over) return;
   if (active.data.current?.role === "panel") return;
-
-  // ⭐ FIX: ensure preview exists
-  if (!previewContainersRef.current) {
-    previewContainersRef.current = { ...containers };
-  }
 
   const a = active.data?.current || {};
   const o = over.data?.current || {};
 
-  console.log("ACTIVE:", {
-    id: active.id,
-    instId: a.instanceId,
-    container: a.containerId,
-    role: a.role
-  });
-
-  console.log("OVER:", {
-    id: over.id,
-    role: o.role,
-    container: o.containerId,
-    sortable: o.sortable,
-    isSortableItem: !!o.sortable?.id
-  });
-
-  console.log("previewContainersRef.current:", previewContainersRef.current);
-  console.log("state.containers:", state.containers);
-
-  // Warning flags
-  if (o.role?.includes("list") && !o.sortable) {
-    console.warn("⚠️ SORTABLE DATA MISSING — item hover logic WILL break here.");
-  }
-
-  if (a.containerId !== o.containerId) {
-    console.warn("↔️ CROSS-CONTAINER MOVE:", a.containerId, "→", o.containerId);
-  }
-
-  if (o.role === "grid:cell") {
-    console.warn("🚫 OVER GRID CELL WHILE DRAGGING TASK — ignoring.");
-  }
-
-
-  if (active.data.current?.role === "panel") return;
-
   const instId = activeRef.current?.instanceId;
-  const to = over.data.current?.containerId;
-  const role = over.data.current?.role;
+  const to = o.containerId;
+  const role = o.role;
+  const sortableData = o.sortable;
 
   if (!instId || !to || !role) return;
   if (role === "grid:cell") return;
 
-  const base =
-  previewContainersRef.current
-    ? { ...state.containers, ...previewContainersRef.current }
-    : state.containers;
+  // Base snapshot for this preview frame
+  const base = previewContainersRef.current || state.containers;
 
-  // Remove instance from all containers
-  let next = {};
-  for (const [cid, arr] of Object.entries(base)) {
-    next[cid] = arr.filter(id => id !== instId);
+  // Ensure preview is initialized
+  if (!previewContainersRef.current) {
+    previewContainersRef.current = { ...base };
+  }
+  console.log(o);
+console.log(sortableData?.id);
+console.log(instId);
+console.log(a);
+
+console.log(a.containerId);
+
+console.log(to);
+
+  // 1️⃣ Hovering your own row in the same container → keep order
+  if (sortableData?.id === instId && a.containerId === to) {
+    return;
   }
 
+  // 2️⃣ Over the list wrapper "gap" → keep order
+  if (isList(role) && !sortableData?.id) {
+    return;
+  }
+
+  // 3️⃣ Build new container map with inst removed
+  let next = {};
+  for (const [cid, arr] of Object.entries(base)) {
+    next[cid] = arr.filter((id) => id !== instId);
+  }
   if (!next[to]) next[to] = [];
 
-  // ----------------------------------------------
-  // ⭐ INSERT BEFORE THE SORTABLE ITEM YOU ARE OVER
-  // (This is the fix for hovering first item in TaskBox)
-  // ----------------------------------------------
-  const sortableData = over.data.current?.sortable;
+  // 4️⃣ Insert before specific item if we have one
   if (sortableData?.id) {
     const overItemId = sortableData.id;
     const arr = next[to];
-
     const idx = arr.indexOf(overItemId);
     if (idx !== -1) {
-      // Insert instId BEFORE the item you're hovering
       arr.splice(idx, 0, instId);
-    console.log(
-      "%c[PREVIEW UPDATE]",
-      "color:#ff0;font-weight:bold;",
-      "container:", to,
-      "new order:", arr,
-      "full preview:", next
-    );
       previewContainersRef.current = next;
       return;
     }
   }
-console.log("%cSORTABLE CHECK",
-  "background:#900;color:#fff",
-  "preview:", next[to],
-  "actual:", state.containers[to]
-);
-  // ----------------------------------------------
-  // Existing top / bottom / list logic
-  // ----------------------------------------------
+
+  // 5️⃣ Top / bottom sentinels (explicit)
   if (isTop(role)) {
     next[to] = [instId, ...next[to]];
-  }
-  else if (isBottom(role)) {
+  } else if (isBottom(role)) {
+    next[to].push(instId);
+  } else {
+    // fallback — only used for odd roles
     next[to].push(instId);
   }
-  else if (isList(role)) {
-    next[to].push(instId);
-  }
-  else {
-    // fallback
-    next[to].push(instId);
-  }
-console.log(
-  "%c[PREVIEW UPDATE]",
-  "color:#ff0;font-weight:bold;",
-  "Applying preview for container:",
-  to,
-  previewContainersRef.current[to]
-);
 
   previewContainersRef.current = next;
 };
+
 
   function reorderList(activeId, overId, toContainerId, containers) {
     const prev = containers[toContainerId] || [];
@@ -364,6 +329,28 @@ console.log(
     dispatch(deleteInstance(instanceId));
     emit("delete_instance", { gridId, instanceId });
   };
+  // ----------------------------------------------------------
+  // TOGGLE PARENT + SORTABLE FLAGS FOR AN INSTANCE
+  // ----------------------------------------------------------
+  const toggleParentSortable = (instanceId) => {
+    const current = instances[instanceId];
+    if (!current) return;
+
+    const currentParent = current.props?.parent ?? false;
+    const currentSortable = current.props?.sortable ?? false;
+
+    const updated = {
+      ...current,
+      props: {
+        ...(current.props || {}),
+        parent: !currentParent,
+        sortable: !currentSortable
+      }
+    };
+
+    dispatch(updateInstance(updated));
+    emit("update_instance", { gridId, instance: updated });
+  };
 
   // ----------------------------------------------------------
   // DRAG OVERLAY
@@ -389,14 +376,50 @@ console.log(
   // ----------------------------------------------------------
   // GRID UPDATES
   // ----------------------------------------------------------
-  const updateRows = (r) => {
-    dispatch(updateGrid({ rows: r, cols: grid.cols }));
-    emit("update_grid", { rows: r, cols: grid.cols, gridId });
+  // Change current grid from dropdown
+  const handleGridChange = (e) => {
+    const newGridId = e.target.value;
+    if (!newGridId || newGridId === gridId) return;
+
+    localStorage.setItem("daytrack-gridId", newGridId);
+    socket.emit("request_full_state", { gridId: newGridId });
   };
 
-  const updateCols = (c) => {
-    dispatch(updateGrid({ rows: grid.rows, cols: c }));
-    emit("update_grid", { rows: grid.rows, cols: c, gridId });
+  // Create a brand new grid
+  const handleCreateNewGrid = () => {
+    // Clear cached gridId so server will create a fresh one
+    localStorage.removeItem("daytrack-gridId");
+    socket.emit("request_full_state"); // no gridId → new grid
+  };
+
+
+  const updateRows = (value) => {
+    const num = Math.max(1, Number(value) || 1);
+
+    // update local redux grid
+    dispatch(updateGrid({ rows: num }));
+
+    // send *only* rows to server
+    emit("update_grid", { gridId, rows: num });
+  };
+
+  const updateCols = (value) => {
+    const num = Math.max(1, Number(value) || 1);
+
+    // update local redux grid
+    dispatch(updateGrid({ cols: num }));
+
+    // send *only* cols to server
+    emit("update_grid", { gridId, cols: num });
+  };
+  const commitGridName = () => {
+    if (!gridId) return;
+
+    const trimmed = gridName.trim();
+    if (trimmed === (grid.name || "")) return;
+
+    dispatch(updateGrid({ name: trimmed }));
+    emit("update_grid", { gridId, name: trimmed });
   };
   function findNextOpenPosition(panels, rows, cols) {
     const taken = new Set(panels.map(p => `${p.row}-${p.col}`));
@@ -472,7 +495,7 @@ console.log(
 
         // ⭐ add preview ref to context for TaskBox
         previewContainersRef,
-
+        toggleParentSortable,
         editItem,
         deleteItem: deleteItemFn,
         anyDragging
@@ -498,33 +521,139 @@ console.log(
             display: "flex",
             alignItems: "center",
             gap: 10,
-            paddingLeft: 10,
             transition: "top 200ms ease",
             zIndex: 5000,
           }}
         >
-          <Textfield
-            label="Rows"
-            type="number"
-            value={grid.rows}
-            onChange={(e) => updateRows(+e.target.value || 1)}
-          />
+          {/* 🔹 Grid selector + New Grid button */}
+          <div style={{ marginLeft: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ color: "#fff", fontSize: 12 }}>Grid</span>
+            <select
+              value={gridId || ""}
+              onChange={handleGridChange}
+              style={{
+                background: "#22272B",
+                color: "white",
+                border: "1px solid #444",
+                borderRadius: 4,
+                padding: "4px 8px",
+                fontSize: 12,
+              }}
+            >
+              {availableGrids.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name || `Grid ${g.id.slice(-4)}`}
+                </option>
+              ))}
+            </select>
 
-          <Textfield
-            label="Columns"
-            type="number"
-            value={grid.cols}
-            onChange={(e) => updateCols(+e.target.value || 1)}
-          />
+            <Button
+              appearance="default"
+              onClick={handleCreateNewGrid}
+              style={{ color: "white", fontSize: 12, paddingInline: 8 }}
+            >
+              New Grid
+            </Button>
+          </div>
+
+          {/* 🔹 Grid name input */}
+          <div className={"toolbar-inputs"} style={{ height: 45, maxWidth: 300, display: "flex" }}>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <Label htmlFor="grid_name" style={{ color: "white" }}>Grid Name</Label>
+              <Textfield
+                id={"grid_name"}
+                label="Name"
+                value={gridName ?? ""}
+                onChange={(e) => setGridName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitGridName();
+                    e.target.blur(); // optional, makes Enter “feel done”
+                  }
+                }}
+                style={{
+                  background: "#22272B",
+                  color: "white",
+                  border: "1px solid #444",
+                  flex: 1
+                }}
+              />
+            </div>
+
+
+            {/* 🔹 Rows / Columns */}
+            <div style={{ maxWidth: 70, display: "flex", flexDirection: "column" }}>
+              <Label htmlFor="grid_row" style={{ color: "white" }}>Row</Label>
+              <Textfield
+                id={"grid_row"}
+                label="Rows"
+                type="number"
+                value={rowInput}
+                style={{
+                  background: "#22272B",
+                  color: "white",
+                  border: "1px solid #444",
+                }}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setRowInput(val);      // allow empty string
+
+                  if (val === "") return; // don't commit yet
+
+                  updateRows(val);
+                }}
+                onBlur={() => {
+                  if (rowInput === "") {
+                    // default to 1 when user leaves it empty
+                    setRowInput("1");
+                    updateRows("1");
+                  }
+                }}
+              />
+            </div>
+
+            <div style={{ maxWidth: 70, display: "flex", flexDirection: "column" }}>
+              <Label htmlFor="grid_col" style={{ color: "white" }}>Field label</Label>
+              <Textfield
+                id={"grid_col"}
+                label="Columns"
+                type="number"
+                value={colInput}
+                style={{
+                  backgroundColor: "#22272B",
+                  color: "white",
+                  border: "1px solid #444",
+                  flex: 1
+                }}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setColInput(val);
+
+                  if (val === "") return;
+
+                  updateCols(val);
+                }}
+                onBlur={() => {
+                  if (colInput === "") {
+                    setColInput("1");
+                    updateCols("1");
+                  }
+                }}
+              />
+            </div>
+          </div>
+
 
           <Button appearance="primary" onClick={addNewPanel}>
             Add Panel
           </Button>
 
-          <Button appearance="warning" onClick={() => setShowToolbar(false)}>
+          <Button style={{ marginLeft: "auto", marginRight: 10 }} appearance="warning" onClick={() => setShowToolbar(false)}>
             Close
           </Button>
         </div>
+
 
         <Grid
           gridId={grid._id}

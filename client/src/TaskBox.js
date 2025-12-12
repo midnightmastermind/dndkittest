@@ -101,8 +101,9 @@ export default function TaskBox({ containerId, disabled }) {
       <div
         ref={setTopDrop}
         style={{
-          height: 10,
-          pointerEvents: "auto"
+          minHeight: "30px",
+          pointerEvents: "auto",
+          marginTop: -10
         }}
       />
 

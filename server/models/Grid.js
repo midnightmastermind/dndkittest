@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 const GridSchema = new mongoose.Schema({
+  name: { type: String },
   rows: { type: Number, default: 2 },
   cols: { type: Number, default: 3 },
   colSizes: { type: [Number], default: [] },

@@ -238,7 +238,17 @@ io.on("connection", (socket) => {
 
         const userId = socket.userId;
 
-        // CREATE NEW GRID
+        // Helper: get all grids for this user (for the dropdown)
+        async function getAllGridsForUser() {
+            const all = await Grid.find({ userId }).sort({ createdAt: 1 });
+            return all.map((g, idx) => ({
+                id: g._id.toString(),
+                name: g.name || `Grid ${idx + 1}`,
+                createdAt: g.createdAt,
+            }));
+        }
+
+        // ---------- CREATE NEW GRID IF NONE SPECIFIED ----------
         if (!gridId) {
             console.log("🟨 Creating new grid for user:", userId);
 
@@ -253,11 +263,13 @@ io.on("connection", (socket) => {
             gridId = newGrid._id.toString();
 
             cache[gridId] = {
-                grid: newGrid,
+                grid: newGrid.toObject(),
                 panels: {},
                 containers: {},
                 instances: {}
             };
+
+            const grids = await getAllGridsForUser();
 
             console.log("✅ New grid created:", gridId);
 
@@ -266,11 +278,12 @@ io.on("connection", (socket) => {
                 grid: newGrid,
                 panels: [],
                 containers: [],
-                instances: []
+                instances: [],
+                grids, // 🔥 add this
             });
         }
 
-        // LOAD EXISTING GRID
+        // ---------- LOAD EXISTING GRID ----------
         if (!cache[gridId]) {
             console.log("🟦 Cache miss → loading grid from DB...");
             const loaded = await loadGridIntoCache(gridId, userId);
@@ -282,6 +295,7 @@ io.on("connection", (socket) => {
         }
 
         const data = cache[gridId];
+        const grids = await getAllGridsForUser();
 
         console.log("📤 Sending full_state response:", gridId);
 
@@ -293,9 +307,11 @@ io.on("connection", (socket) => {
                 containerId,
                 items
             })),
-            panels: Object.values(data.panels)
+            panels: Object.values(data.panels),
+            grids, // 🔥 add this
         });
     });
+
 
     // ======================================================
     // INSTANCE HANDLERS
@@ -447,25 +463,48 @@ io.on("connection", (socket) => {
     // ======================================================
     // GRID UPDATE
     // ======================================================
-    socket.on("update_grid", async ({ gridId, grid }) => {
-        console.log("🟦 EVENT update_grid:", { gridId, grid });
+    socket.on("update_grid", async (payload) => {
+        // payload can be:
+        // 1) { gridId, rows, cols, name? }
+        // 2) { gridId, grid: { rows, cols, name? } }
+
+        console.log("🟦 EVENT update_grid:", payload);
+
+        const { gridId } = payload;
+        if (!gridId) {
+            console.log("❌ update_grid missing gridId");
+            return;
+        }
 
         if (!cache[gridId]) {
             console.log("❌ Cache missing → cannot update grid");
             return;
         }
 
-        cache[gridId].grid = { ...cache[gridId].grid, ...grid };
+        const { grid: gridPatchFromNested, ...rest } = payload;
+        // Remove gridId from rest so it doesn't get written into the document
+        const { gridId: _ignored, ...restWithoutId } = rest;
+
+        const updatePatch = gridPatchFromNested || restWithoutId;
+
+        console.log("🔧 Derived updatePatch:", updatePatch);
+
+        // Update cache
+        cache[gridId].grid = {
+            ...cache[gridId].grid,
+            ...updatePatch
+        };
 
         await Grid.findOneAndUpdate(
             { _id: gridId, userId: socket.userId },
-            grid,
+            updatePatch,
             { upsert: false }
         );
 
         console.log("✅ Grid updated");
-        io.emit("grid_updated", grid);
+        io.emit("grid_updated", updatePatch);
     });
+
 
     // Disconnect
     socket.on("disconnect", () => {

@@ -5,6 +5,7 @@
   "dependencies": {
     "@atlaskit/button": "^23.6.3",
     "@atlaskit/css-reset": "^7.3.9",
+    "@atlaskit/form": "^14.4.0",
     "@atlaskit/popup": "^4.6.4",
     "@atlaskit/pragmatic-drag-and-drop": "^1.7.7",
     "@atlaskit/textfield": "^8.1.0",

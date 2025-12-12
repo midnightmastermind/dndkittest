@@ -1,4 +1,5 @@
-import React, { useContext, useRef, useState } from "react";
+// SortableItem.jsx
+import React, { useContext, useRef, useState, useEffect } from "react";
 import {
     useSortable,
     SortableContext,
@@ -13,29 +14,43 @@ import TrashIcon from "@atlaskit/icon/glyph/trash";
 import { ScheduleContext } from "./ScheduleContext";
 
 const SortableItem = ({ instanceId, containerId, isDragPreview = false }) => {
-    const { state, instanceStoreRef, editItem, deleteItem, anyDragging } =
-        useContext(ScheduleContext);
+    const {
+        state,
+        editItem,
+        deleteItem,
+        anyDragging,
+        toggleParentSortable,
+        previewContainersRef
+    } = useContext(ScheduleContext);
 
     const inst = state.instances[instanceId] || {};
     const [collapsed, setCollapsed] = useState(true);
 
-    // 🔒 We now TRUST the containerId prop instead of scanning global state.
-    // If it ever ends up undefined, we just bail on drag data instead of guessing.
-    const {
-        label = "Untitled",
-        children: rawChildren,
-        childrenSortable = false
-    } = inst;
+    const { label = "Untitled" } = inst;
+    const props = inst.props || {};
+    const isParent = !!props.parent;
+    const childrenSortable = !!props.sortable; // driven from props.sortable
 
+    // 🔹 Actual nested children come from the containers map
+    const childContainerId = `children-${instanceId}`;
 
-    const children = Array.isArray(rawChildren) ? rawChildren : [];
+    let children = state.containers[childContainerId] || [];
+    // allow drag-over preview to show nested reordering too
+    if (previewContainersRef?.current?.[childContainerId]) {
+        children = previewContainersRef.current[childContainerId];
+    }
+    const childIds = children.filter((id) => state.instances[id]);
 
     const [isOpen, setIsOpen] = useState(false);
     const [draft, setDraft] = useState(label);
     const anchorRef = useRef(null);
 
-    // draggable only when collapsed
-    const sortableDisabled = children.length > 0 && !collapsed;
+    const hasChildren = childIds.length > 0;
+    const isChildDroppable = childrenSortable && !collapsed && !isDragPreview;
+
+    // draggable only when collapsed (so expanded lists aren't dragged as a block)
+    const sortableDisabled = hasChildren && !collapsed && isChildDroppable;
+    const sortableId = isDragPreview ? `overlay-${instanceId}` : instanceId;
 
     const {
         setNodeRef,
@@ -45,15 +60,16 @@ const SortableItem = ({ instanceId, containerId, isDragPreview = false }) => {
         transition,
         isDragging
     } = useSortable({
-        id: instanceId,
+        id: sortableId,
         disabled: sortableDisabled,
-        data: { type: "task", role: "task", instanceId, containerId }
+        data: { id: sortableId, type: "task", role: "task", instanceId, containerId },
+
     });
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (anyDragging && isOpen) setIsOpen(false);
         if (isDragging && !collapsed) setCollapsed(true);
-    }, [anyDragging, isDragging]);
+    }, [anyDragging, isDragging, collapsed, isOpen]);
 
     const save = () => {
         editItem(instanceId, draft.trim() || "Untitled");
@@ -62,16 +78,17 @@ const SortableItem = ({ instanceId, containerId, isDragPreview = false }) => {
     // freeze-render flag
     const shouldHideChildren = isDragging || collapsed;
 
+
     const wrapperStyle = {
         transform: CSS.Transform.toString(transform),
-        transition,
+          transition: isDragPreview ? undefined : transition,
         width: "100%",
         maxWidth: isDragPreview ? "300px" : "unset",
         opacity: isDragging ? 0.5 : 1,
         pointerEvents: "auto",
         touchAction: "none",
         paddingBottom: 3
-    };
+        };
 
     const rowStyle = {
         background: "#2F343A",
@@ -83,58 +100,78 @@ const SortableItem = ({ instanceId, containerId, isDragPreview = false }) => {
         display: "flex",
         alignItems: "center",
         fontSize: 14,
-        touchAction: "manipulation"
+        touchAction: "manipulation",
     };
 
     // ---------------------------------------------------
-    // CHILDREN DROPPABLE + BOTTOM SLOT
+    // CHILDREN DROPPABLE + TOP/BOTTOM SENTINELS
     // ---------------------------------------------------
-    const childContainerId = `children-${instanceId}`;
-    const isChildDroppable = childrenSortable && !collapsed && !isDragPreview;
 
-    const { setNodeRef: setDroppableChildren } = useDroppable({
-        id: childContainerId,
-        data: { role: "nested-container", containerId: childContainerId },
+    // Only droppable when:
+    // - parent is configured as sortable (P+)
+    // - and expanded
+    // - and not an overlay
+
+    // ⭐ TOP drop zone (like taskbox:top)
+    const { setNodeRef: setChildTopDrop } = useDroppable({
+        id: `${childContainerId}-top`,
+        data: { role: "nested:top", containerId: childContainerId },
         disabled: !isChildDroppable
     });
 
-    // ⭐ bottom droppable sentinel
-    const bottomId = `bottom-${childContainerId}`;
-    const { setNodeRef: setBottomRef } = useDroppable({
-        id: bottomId,
-        data: { role: "nested-bottom-slot", containerId: childContainerId },
+    // ⭐ LIST drop zone wrapper (like taskbox:list)
+    const { setNodeRef: setChildListDrop } = useDroppable({
+        id: childContainerId,
+        data: { role: "nested:list", containerId: childContainerId },
+        disabled: !isChildDroppable
+    });
+
+    // ⭐ BOTTOM drop zone (like taskbox:bottom)
+    const { setNodeRef: setChildBottomDrop } = useDroppable({
+        id: `${childContainerId}-bottom`,
+        data: { role: "nested:bottom", containerId: childContainerId },
         disabled: !isChildDroppable
     });
 
     const toggleCollapse = () => {
-        instanceStoreRef.current[instanceId].collapsed = !collapsed;
-        setCollapsed(!collapsed);
+        setCollapsed((prev) => !prev);
     };
-console.log(
-  "%c[SORTABLE ITEM RENDER]",
-  "color:#09f;font-weight:bold;",
-  instanceId,
-  {
-    containerId,
-    dndId: instanceId,
-    nodeRefAttached: !!setNodeRef
-  }
-);
+
+    console.log(
+        "%c[SORTABLE ITEM RENDER]",
+        "color:#09f;font-weight:bold;",
+        instanceId,
+        {
+            containerId,
+            dndId: instanceId
+        }
+    );
+    console.log("sortableDisabled", sortableDisabled);
+    console.log("childrenSortable", childrenSortable);
+    console.log("childIds", childIds);
+    console.log("isParent", isParent);
+    console.log("isChildDroppable", isChildDroppable);
+    console.log("shouldHideChildren", shouldHideChildren);
 
     return (
         <div
-            ref={setNodeRef}
-            data-sortable-id={instanceId}    // ⭐ REQUIRED FOR POINTER INSERTION
+            className={"no-select"}
+            ref={!isDragPreview ? setNodeRef : null}
+            data-sortable-id={instanceId}
             style={wrapperStyle}
         >
             {/* Parent row */}
-            <div style={rowStyle}  {...(!sortableDisabled ? attributes : {})}
-                {...(!sortableDisabled ? listeners : {})} data-dndkit-disable-drag={sortableDisabled}>
-                {children.length > 0 && (
+            <div
+                style={rowStyle}
+                {...(!sortableDisabled ? attributes : {})}
+                {...(!sortableDisabled ? listeners : {})}
+                data-dndkit-disable-drag={sortableDisabled}
+            >
+                {(hasChildren || childrenSortable || isParent) && (
                     <button
                         data-dndkit-disable-drag
-                        onPointerDown={e => e.stopPropagation()}
-                        onClick={e => {
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
                             e.stopPropagation();
                             toggleCollapse();
                         }}
@@ -157,7 +194,7 @@ console.log(
                 <div
                     ref={anchorRef}
                     data-dndkit-disable-drag
-                    onPointerDown={e => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
                 >
                     <Popup
                         isOpen={isOpen}
@@ -168,13 +205,13 @@ console.log(
                         content={() => (
                             <div
                                 data-dndkit-disable-drag
-                                onPointerDown={e => e.stopPropagation()}
+                                onPointerDown={(e) => e.stopPropagation()}
                                 style={{
                                     background: "#1D2125",
                                     padding: 10,
                                     borderRadius: 4,
                                     border: "1px solid #555",
-                                    width: 200,
+                                    width: 260,
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "space-between",
@@ -184,12 +221,37 @@ console.log(
                                 <Textfield
                                     autoFocus
                                     value={draft}
-                                    onChange={e => setDraft(e.target.value)}
-                                    onKeyDown={e => {
+                                    onChange={(e) => setDraft(e.target.value)}
+                                    onKeyDown={(e) => {
                                         if (e.key === "Enter") save();
                                         e.stopPropagation();
                                     }}
                                 />
+
+                                {/* Toggle parent/sortable flag */}
+                                <button
+                                    onClick={() => toggleParentSortable(instanceId)}
+                                    style={{
+                                        background: isParent ? "#0052CC" : "#42526E",
+                                        border: "none",
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: 4,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        cursor: "pointer",
+                                        color: "white",
+                                        fontSize: 11
+                                    }}
+                                    title={
+                                        isParent
+                                            ? "Disable parent/sortable children"
+                                            : "Enable parent with sortable children"
+                                    }
+                                >
+                                    {isParent ? "P-" : "P+"}
+                                </button>
 
                                 <button
                                     onClick={() => deleteItem(instanceId)}
@@ -209,11 +271,11 @@ console.log(
                                 </button>
                             </div>
                         )}
-                        trigger={triggerProps => (
+                        trigger={(triggerProps) => (
                             <button
                                 {...triggerProps}
                                 data-dndkit-disable-drag
-                                onClick={e => {
+                                onClick={(e) => {
                                     e.stopPropagation();
                                     setDraft(label);
                                     setIsOpen(!isOpen);
@@ -236,71 +298,89 @@ console.log(
             </div>
 
             {/* ----------------------------------------------
-                CHILDREN DRAWER
-                Drawer remains mounted so animation works.
-                But child content is frozen while dragging.
-            ----------------------------------------------- */}
-            <div className={`collapsible-drawer ${collapsed ? "closed" : "open"}`}>
-
-                {(children.length > 0 || childrenSortable) && (
+          CHILDREN DRAWER (TaskBox-style droppables)
+      ----------------------------------------------- */}
+            <div style={{ display: isChildDroppable ? "flex" : "none" }} className={`collapsible-drawer ${collapsed ? "closed" : "open"}`}>
+                {(childrenSortable || isParent) && (
                     <div
                         style={{
-                            paddingLeft: 10,
+                            paddingLeft: 30,
                             background:
                                 "linear-gradient(to bottom, rgba(255,255,255,0.03), rgba(0,0,0,0.15)), #262a30",
-                            borderLeft: "1px solid #444"
+                            borderLeft: "1px solid #444",
+                            display: "flex",
+                            flexDirection: "column",
+                            width: "100%",
                         }}
                     >
+                        {/* ⭐ THIN TOP DROPPABLE */}
                         <div
-                            ref={isChildDroppable ? setDroppableChildren : null}
+                            ref={isChildDroppable ? setChildTopDrop : null}
                             style={{
-                                paddingTop: 5,
+                                height: 40,
+                                pointerEvents: isChildDroppable ? "auto" : "none",
+                                opacity: 0,
+                                marginTop: isChildDroppable ? -20 : 0
+
+                            }}
+                        />
+
+                        {/* ⭐ LIST DROPPABLE WRAPPER */}
+                        <div
+                            ref={isChildDroppable ? setChildListDrop : null}
+                            style={{
                                 opacity: collapsed ? 0 : 1,
-                                transition: "opacity 150ms ease"
+                                transition: "opacity 150ms ease",
+                                display: "flex",
+                                flexDirection: "column",
+                                minHeight: isChildDroppable ? 40 : 0
                             }}
                         >
-                            {/* FREEZE CHILD CONTENT DURING DRAG */}
-                            {!shouldHideChildren && (
-                                childrenSortable ? (
+                            {!shouldHideChildren &&
+                                (childrenSortable ? (
                                     <SortableContext
                                         id={childContainerId}
-                                        items={children}
+                                        items={childIds}
                                         strategy={verticalListSortingStrategy}
                                         data={{
-                                            role: "nested-container",
+                                            role: "nested:list",
                                             containerId: childContainerId
                                         }}
                                     >
-                                        {children.map(childId => (
+                                        {childIds.map((childId) => (
                                             <SortableItem
                                                 key={childId}
                                                 instanceId={childId}
                                                 containerId={childContainerId}
                                             />
                                         ))}
-
-                                        {/* Bottom drop zone */}
-                                        <div
-                                            ref={setBottomRef}
-                                            style={{ height: 40, opacity: 0.2 }}
-                                        />
                                     </SortableContext>
                                 ) : (
-                                    children.map(childId => (
+                                    childIds.map((childId) => (
                                         <SortableItem
                                             key={childId}
                                             instanceId={childId}
                                             containerId={childContainerId}
                                         />
                                     ))
-                                )
-                            )}
+                                ))}
                         </div>
+
+                        {/* ⭐ REAL BOTTOM DROPPABLE */}
+                        <div
+                            ref={isChildDroppable ? setChildBottomDrop : null}
+                            style={{
+                                height: hasChildren ? 40 : 40,
+                                pointerEvents: isChildDroppable ? "auto" : "none",
+                                opacity: 0.2,
+                                marginBottom: "-3px"
+                            }}
+                        />
                     </div>
                 )}
-
             </div>
         </div>
     );
-}
+};
+
 export default React.memo(SortableItem);

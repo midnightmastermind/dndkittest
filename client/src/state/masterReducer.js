@@ -36,11 +36,19 @@ export function masterReducer(state, action) {
     // NEW FULL STATE FROM SERVER
     // ------------------------------
     case ACTIONS.FULL_STATE: {
-      const { gridId, instances, containers, panels, grid } = action.payload;
+      const {
+        gridId,
+        instances,
+        containers,
+        panels,
+        grid,
+        grids: availableGrids = [],   // 👈 comes from server
+      } = action.payload;
 
       return {
         ...state,
-        gridId, // 🔥 absolutely required
+        gridId,
+        availableGrids,                // 🔥 store for toolbar select
         instances: arrToObj(instances, "instanceId"),
         containers: containers.reduce((acc, c) => {
           acc[c.containerId] = c.items;
@@ -50,6 +58,7 @@ export function masterReducer(state, action) {
         grid
       };
     }
+
 
     // ------------------------------
     // STORE GRID ID LOCALLY
@@ -141,24 +150,37 @@ export function masterReducer(state, action) {
     // ------------------------------
     // GRID SIZE
     // ------------------------------
-    case ACTIONS.UPDATE_GRID: {
-      const current = state.grid;
+case ACTIONS.UPDATE_GRID: {
+  const current = state.grid;
 
-      // Do NOT allow update if grid hasn't been hydrated
-      if (!current || !current._id) {
-        console.warn("⛔ UPDATE_GRID ignored: grid not loaded yet", action.payload);
-        return state;
-      }
+  // Do NOT allow update if grid hasn't been hydrated
+  if (!current || !current._id) {
+    console.warn("⛔ UPDATE_GRID ignored: grid not loaded yet", action.payload);
+    return state;
+  }
 
-      // Only merge the fields provided, do not replace the grid object
-      return {
-        ...state,
-        grid: {
-          ...current,
-          ...action.payload
-        }
-      };
-    }
+  const nextGrid = {
+    ...current,
+    ...action.payload
+  };
+
+  let nextAvailableGrids = state.availableGrids || [];
+
+  // 🔥 If we got a name change, mirror it into availableGrids
+  if (action.payload.name !== undefined) {
+    const currentGridId = current._id?.toString?.() || state.gridId;
+
+    nextAvailableGrids = nextAvailableGrids.map((g) =>
+      g.id === currentGridId ? { ...g, name: action.payload.name } : g
+    );
+  }
+
+  return {
+    ...state,
+    grid: nextGrid,
+    availableGrids: nextAvailableGrids
+  };
+}
 
     case ACTIONS.SET_USER_ID: {
       return {

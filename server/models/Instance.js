@@ -1,3 +1,4 @@
+// models/Instance.js
 import mongoose from "mongoose";
 
 const InstanceSchema = new mongoose.Schema(
@@ -7,6 +8,13 @@ const InstanceSchema = new mongoose.Schema(
     gridId: { type: String, required: true },   // <-- REQUIRED
     label: { type: String, default: "Untitled" },
     children: { type: [String], default: [] },
+
+    // 🔹 NEW: props object with parent + sortable flags
+    props: {
+      parent: { type: Boolean, default: false },
+      sortable: { type: Boolean, default: false }
+    },
+
     userId: { type: String, required: true }
   },
   { timestamps: true }

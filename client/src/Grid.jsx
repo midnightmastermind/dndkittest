@@ -9,6 +9,7 @@ import {
   pointerWithin,
   useDndContext
 } from "@dnd-kit/core";
+import { snapCenterToCursor } from "@dnd-kit/modifiers";
 
 import Panel from "./Panel";
 import PanelClone from "./PanelClone";
@@ -78,11 +79,12 @@ function smartCollisionDetection(args) {
     if (!targetRole) return false;
 
     if (activeRole === "panel") {
+      // panels may only land on grid cells
       return targetRole === "grid:cell";
     }
 
     if (activeRole === "task") {
-      // tasks can hit *anything* except grid cells
+      // tasks can land on anything EXCEPT grid cells
       return targetRole !== "grid:cell";
     }
 
@@ -90,7 +92,7 @@ function smartCollisionDetection(args) {
   }
 
   // ------------------------------------------------------------
-  // PASS 1 — Expand schedule:list hitboxes for tasks
+  // PASS 1 — Expand *list* hitboxes (schedule + nested)
   // ------------------------------------------------------------
   const expandedRects = new Map();
   const entries = [...droppableRects.entries()];
@@ -100,17 +102,20 @@ function smartCollisionDetection(args) {
     const data = droppableContainers[i]?.data?.current;
     const role = data?.role;
 
+    // Sortable items keep their rect as-is
     if (data?.sortable) {
       expandedRects.set(id, rect);
       continue;
     }
 
+    // Top / bottom sentinels keep their exact rect
     if (role?.endsWith(":top") || role?.endsWith(":bottom")) {
       expandedRects.set(id, rect);
       continue;
     }
 
-    if (role === "schedule:list" && activeRole === "task") {
+    // Treat BOTH schedule and nested lists the same for “fat” hitboxes
+    if ((role === "schedule:list" || role === "nested:list") && activeRole === "task") {
       const above = entries[i - 1]?.[1];
       const below = entries[i + 1]?.[1];
 
@@ -126,11 +131,12 @@ function smartCollisionDetection(args) {
       continue;
     }
 
+    // everything else unchanged
     expandedRects.set(id, rect);
   }
 
   // ------------------------------------------------------------
-  // PASS 2 — Hit Testing (with optional clipping to panelBounds)
+  // PASS 2 — Hit testing (with optional clipping)
   // ------------------------------------------------------------
   for (const container of droppableContainers) {
     const id = container.id;
@@ -144,11 +150,9 @@ function smartCollisionDetection(args) {
 
     let clipped = { ...rect };
 
-    // 🔥 Clip to visible scroll bounds if present
     if (data?.panelBounds) {
       const { top: pTop, bottom: pBottom } = data.panelBounds;
 
-      // Ignore if pointer is outside the schedule panel vertically
       if (py < pTop || py > pBottom) {
         continue;
       }
@@ -157,9 +161,7 @@ function smartCollisionDetection(args) {
       clipped.bottom = Math.min(clipped.bottom, pBottom);
       clipped.height = clipped.bottom - clipped.top;
 
-      if (clipped.height <= 0) {
-        continue;
-      }
+      if (clipped.height <= 0) continue;
     }
 
     const inside =
@@ -169,45 +171,125 @@ function smartCollisionDetection(args) {
       py <= clipped.bottom;
 
     if (inside) {
-      hits.push({ id, rect: clipped, role });
+      // ⭐ ALSO TRACK containerId + isSortableItem
+      hits.push({
+        id,
+        rect: clipped,
+        role,
+        containerId: data?.containerId,
+        isSortableItem: !!data?.sortable,
+      });
     }
   }
 
   // ------------------------------------------------------------
-  // GRID-CELL SHORT-CIRCUIT
+  // GRID-CELL SHORT-CIRCUIT FOR PANELS
   // ------------------------------------------------------------
   if (activeRole === "panel") {
     const cellHit = hits.find((h) => h.role === "grid:cell");
     if (cellHit) return [cellHit];
   }
 
+  // Strip grid cells for tasks
   if (activeRole === "task") {
-    const filtered = hits.filter((h) => h.role !== "grid:cell");
-    if (filtered.length) {
-      return filtered;
+    const nonCells = hits.filter((h) => h.role !== "grid:cell");
+    if (nonCells.length) {
+      hits.splice(0, hits.length, ...nonCells);
     }
   }
 
   // ------------------------------------------------------------
-  // PASS 3 — Prioritize specific items vs list wrappers
+  // PASS 3 — Prioritize hits for TASK drags
   // ------------------------------------------------------------
+  if (activeRole === "task") {
+    // 3a) If we’re hovering a SORTABLE ITEM, let it win over
+    //     top/bottom sentinels in the SAME container.
+    const sortableTaskHits = hits.filter(
+      (h) => h.role === "task" && h.isSortableItem
+    );
+
+    if (sortableTaskHits.length) {
+      const sortableContainers = new Set(
+        sortableTaskHits
+          .map((h) => h.containerId)
+          .filter(Boolean)
+      );
+
+      const filtered = hits.filter((h) => {
+        const isTopBottom =
+          h.role?.endsWith(":top") || h.role?.endsWith(":bottom");
+        if (!isTopBottom) return true;
+
+        // If this top/bottom belongs to a container that also
+        // has a sortable task hit under the pointer, drop it so
+        // the item can win.
+        return !(
+          h.containerId && sortableContainers.has(h.containerId)
+        );
+      });
+
+      hits.splice(0, hits.length, ...filtered);
+    }
+
+    // 3b) Nested vs parent: if ANY nested target is under pointer,
+    //     drop outer "task" hits (TaskBox items), but KEEP child
+    //     tasks inside nested drawers (children-*).
+    const hasNestedTarget = hits.some(
+      (h) => h.role && h.role.startsWith("nested")
+    );
+
+    if (hasNestedTarget) {
+      const filtered = hits.filter((h) => {
+        if (h.role !== "task") return true;
+        // keep child items in nested drawers
+        if (h.containerId && h.containerId.startsWith("children-")) {
+          return true;
+        }
+        // drop parent "task" hits (TaskBox items / parent rows)
+        return false;
+      });
+
+      hits.splice(0, hits.length, ...filtered);
+    }
+  }
+
+  function rankRoleForTask(role) {
+    if (!role) return 999;
+
+    const isTopBottom = role.endsWith(":top") || role.endsWith(":bottom");
+    const isList      = role.endsWith(":list");
+    const prefix      = role.split(":")[0]; // "nested", "taskbox", "schedule", ...
+
+    // 1) top/bottom sentinels — nested first, then schedule, then taskbox
+    if (isTopBottom) {
+      if (prefix === "nested")   return 0;
+      if (prefix === "schedule") return 1;
+      if (prefix === "taskbox")  return 2;
+      return 3;
+    }
+
+    // 2) "task" items (child rows) — after top/bottom
+    if (role === "task") {
+      return 4;
+    }
+
+    // 3) list wrappers — nested list wins over schedule/taskbox lists
+    if (isList) {
+      if (prefix === "nested")   return 5;
+      if (prefix === "schedule") return 6;
+      if (prefix === "taskbox")  return 7;
+      return 8;
+    }
+
+    return 20;
+  }
+
   hits.sort((a, b) => {
-    const ra = a.role;
-    const rb = b.role;
+    const ra = a.role || "";
+    const rb = b.role || "";
 
     if (activeRole === "task") {
-      const isTaskA = ra === "task";
-      const isTaskB = rb === "task";
-
-      const isListA = typeof ra === "string" && ra.includes(":list");
-      const isListB = typeof rb === "string" && rb.includes(":list");
-
-      // Prefer concrete items over lists
-      if (isTaskA && !isTaskB) return -1;
-      if (isTaskB && !isTaskA) return 1;
-
-      if (isListA && !isListB) return -1;
-      if (isListB && !isListA) return 1;
+      return rankRoleForTask(ra) - rankRoleForTask(rb);
     }
 
     if (activeRole === "panel") {
@@ -254,8 +336,26 @@ export default function Grid({
   /* ------------------------------------------------------------
       GRID SIZE STATE
   ------------------------------------------------------------ */
-  const ensureSizes = (arr, count) =>
-    Array.isArray(arr) && arr.length > 0 ? arr : Array(count).fill(1);
+ const ensureSizes = (arr, count) => {
+  // If no sizes yet, create a fresh array
+  if (!Array.isArray(arr) || arr.length === 0) {
+    return Array(count).fill(1);
+  }
+
+  // If already the right length, keep as-is
+  if (arr.length === count) {
+    return arr;
+  }
+
+  // If fewer entries than count, pad with 1s
+  if (arr.length < count) {
+    return [...arr, ...Array(count - arr.length).fill(1)];
+  }
+
+  // If more entries than count, truncate
+  return arr.slice(0, count);
+};
+
 
   const [colSizes, setColSizes] = useState(() =>
     ensureSizes(grid.colSizes, cols)
@@ -566,6 +666,7 @@ const handleDragMove = (event) => {
       sensors={sensors}
       collisionDetection={smartCollisionDetection}
       onDragStart={handleDragStart}
+      modifiers={[snapCenterToCursor]}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOverProp}
@@ -588,7 +689,7 @@ const handleDragMove = (event) => {
             justifyContent: "center",
             color: "white",
             cursor: "pointer",
-            zIndex: 2
+            zIndex: 4000
           }}
         >
           🔧
@@ -673,7 +774,7 @@ const handleDragMove = (event) => {
         </div>
       </div>
 
-      <DragOverlay zIndex={100000}>
+      <DragOverlay dropAnimation={null} zIndex={100000}>
         {activeId && getPanel(activeId) ? (
           <PanelClone panel={getPanel(activeId)} />
         ) : null}
